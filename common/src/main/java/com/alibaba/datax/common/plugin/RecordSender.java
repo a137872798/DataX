@@ -18,6 +18,10 @@ package com.alibaba.datax.common.plugin;
 
 import com.alibaba.datax.common.element.Record;
 
+/**
+ * 对应 RecordReceiver 描述如何将record发送出去
+ * 该对象内部本身应该包含writer  内部也可能使用了缓冲区 以提高传输效率
+ */
 public interface RecordSender {
 
 	public Record createRecord();

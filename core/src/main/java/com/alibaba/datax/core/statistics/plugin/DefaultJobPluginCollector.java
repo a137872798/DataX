@@ -9,6 +9,7 @@ import java.util.Map;
 
 /**
  * Created by jingxing on 14-9-9.
+ * 对应job级别的数据采集对象
  */
 public final class DefaultJobPluginCollector implements JobPluginCollector {
     private AbstractContainerCommunicator jobCollector;

@@ -17,7 +17,7 @@ public interface Hook {
     public String getName();
 
     /**
-     * TODO 文档
+     * 触发钩子的参数
      *
      * @param jobConf
      * @param msg

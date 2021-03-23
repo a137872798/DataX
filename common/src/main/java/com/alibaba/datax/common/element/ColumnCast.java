@@ -41,6 +41,9 @@ public final class ColumnCast {
 	}
 }
 
+/**
+ * 包含一些默认的转换规则  在初始化时可以通过传入的configuration进行覆盖
+ */
 class StringCast {
 	static String datetimeFormat = "yyyy-MM-dd HH:mm:ss";
 
@@ -182,6 +185,9 @@ class DateCast {
 	}
 }
 
+/**
+ * 用于将 byte -> string 根据不同的字符集进行转码
+ */
 class BytesCast {
 	static String encoding = "utf-8";
 

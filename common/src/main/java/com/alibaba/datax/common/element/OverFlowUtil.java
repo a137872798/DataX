@@ -6,6 +6,9 @@ import java.math.BigInteger;
 import com.alibaba.datax.common.exception.CommonErrorCode;
 import com.alibaba.datax.common.exception.DataXException;
 
+/**
+ * 检测数值是否溢出的工具类
+ */
 public final class OverFlowUtil {
 	public static final BigInteger MAX_LONG = BigInteger
 			.valueOf(Long.MAX_VALUE);
