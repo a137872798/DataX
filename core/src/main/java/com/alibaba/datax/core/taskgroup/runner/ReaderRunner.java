@@ -11,13 +11,17 @@ import org.slf4j.LoggerFactory;
 /**
  * Created by jingxing on 14-9-1.
  * <p/>
- * 单个slice的reader执行调用
+ * 真正干活的是内部的插件对象 runner只是提供一个运行模板
  */
 public class ReaderRunner extends AbstractRunner implements Runnable {
 
     private static final Logger LOG = LoggerFactory
             .getLogger(ReaderRunner.class);
 
+    /**
+     * 当读取到数据后 需要通过sender对象进行发送
+     * 实际上就是将读取的数据发送到阻塞队列
+     */
     private RecordSender recordSender;
 
     public void setRecordSender(RecordSender recordSender) {
@@ -32,6 +36,7 @@ public class ReaderRunner extends AbstractRunner implements Runnable {
     public void run() {
         assert null != this.recordSender;
 
+        // 通过插件定义了读取逻辑
         Reader.Task taskReader = (Reader.Task) this.getPlugin();
 
         //统计waitWriterTime，并且在finally才end。
@@ -54,6 +59,8 @@ public class ReaderRunner extends AbstractRunner implements Runnable {
             LOG.debug("task reader starts to read ...");
             PerfRecord dataPerfRecord = new PerfRecord(getTaskGroupId(), getTaskId(), PerfRecord.PHASE.READ_TASK_DATA);
             dataPerfRecord.start();
+
+            // 核心也是这2步 其他都是统计
             taskReader.startRead(recordSender);
             recordSender.terminate();
 

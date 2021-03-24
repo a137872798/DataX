@@ -48,6 +48,7 @@ public class LoadUtil {
 
     /**
      * jarLoader的缓冲
+     * key 对应插件key 也就是每个插件对应的一个类加载器
      */
     private static Map<String, JarLoader> jarLoaderCenter = new HashMap<String, JarLoader>();
 
@@ -66,6 +67,12 @@ public class LoadUtil {
                 pluginName);
     }
 
+    /**
+     * 每个插件类 在一开始都设置了相关的配置对象
+     * @param pluginType
+     * @param pluginName
+     * @return
+     */
     private static Configuration getPluginConf(PluginType pluginType,
                                                String pluginName) {
         Configuration pluginConf = pluginRegisterCenter
@@ -107,7 +114,7 @@ public class LoadUtil {
     }
 
     /**
-     * 加载taskPlugin，reader、writer都可能加载
+     * 通过插件类型 和插件名 加载插件对象
      *
      * @param pluginType
      * @param pluginName
@@ -115,10 +122,12 @@ public class LoadUtil {
      */
     public static AbstractTaskPlugin loadTaskPlugin(PluginType pluginType,
                                                     String pluginName) {
+        // 这里加载的是 Task级别插件
         Class<? extends AbstractPlugin> clazz = LoadUtil.loadPluginClass(
                 pluginType, pluginName, ContainerType.Task);
 
         try {
+            // 通过反射实例化插件对象
             AbstractTaskPlugin taskPlugin = (AbstractTaskPlugin) clazz
                     .newInstance();
             taskPlugin.setPluginConf(getPluginConf(pluginType, pluginName));
@@ -141,6 +150,7 @@ public class LoadUtil {
         AbstractTaskPlugin taskPlugin = LoadUtil.loadTaskPlugin(pluginType,
                 pluginName);
 
+        // 根据插件类型 将插件包装
         switch (pluginType) {
             case READER:
                 return new ReaderRunner(taskPlugin);
@@ -166,7 +176,9 @@ public class LoadUtil {
     private static synchronized Class<? extends AbstractPlugin> loadPluginClass(
             PluginType pluginType, String pluginName,
             ContainerType pluginRunType) {
+        // 获取该插件对应的配置类 DataX在初始化时 就应该填充这些配置
         Configuration pluginConf = getPluginConf(pluginType, pluginName);
+        // 为了避免反复创建类加载器 这里还使用了缓存
         JarLoader jarLoader = LoadUtil.getJarLoader(pluginType, pluginName);
         try {
             return (Class<? extends AbstractPlugin>) jarLoader
@@ -177,6 +189,12 @@ public class LoadUtil {
         }
     }
 
+    /**
+     * 不同的插件使用不同的类加载器进行隔离
+     * @param pluginType
+     * @param pluginName
+     * @return
+     */
     public static synchronized JarLoader getJarLoader(PluginType pluginType,
                                                       String pluginName) {
         Configuration pluginConf = getPluginConf(pluginType, pluginName);

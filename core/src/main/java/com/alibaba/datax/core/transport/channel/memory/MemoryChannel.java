@@ -17,6 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 内存Channel的具体实现，底层其实是一个ArrayBlockingQueue
+ * 那么channel 本身还是支持并发访问的
  *
  */
 public class MemoryChannel extends Channel {

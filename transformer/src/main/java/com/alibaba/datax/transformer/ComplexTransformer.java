@@ -7,6 +7,7 @@ import java.util.Map;
 /**
  * no comments.
  * Created by liqiang on 16/3/3.
+ * 代表一组转换器
  */
 public abstract class ComplexTransformer {
     //transformerName的唯一性在datax中检查，或者提交到插件中心检查。

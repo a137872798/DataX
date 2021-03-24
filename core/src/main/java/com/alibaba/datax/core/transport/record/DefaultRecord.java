@@ -14,8 +14,8 @@ import java.util.Map;
 
 /**
  * Created by jingxing on 14-8-24.
+ * 默认的记录对象 内部包含多个column
  */
-
 public class DefaultRecord implements Record {
 
 	private static final int RECORD_AVERGAE_COLUMN_NUMBER = 16;

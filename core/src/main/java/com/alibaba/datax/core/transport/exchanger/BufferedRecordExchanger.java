@@ -17,8 +17,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * 可以看到 sender/receiver 内部是通过channel 来实现数据传输的
+ */
 public class BufferedRecordExchanger implements RecordSender, RecordReceiver {
 
+	/**
+	 * 该对象负责缓存传输中的数据  默认实现是一个阻塞队列
+	 */
 	private final Channel channel;
 
 	private final Configuration configuration;
@@ -37,8 +43,16 @@ public class BufferedRecordExchanger implements RecordSender, RecordReceiver {
 
 	private volatile boolean shutdown = false;
 
+	/**
+	 * 采集插件在执行过程中的失败信息
+	 */
 	private final TaskPluginCollector pluginCollector;
 
+	/**
+	 * 初始化 exchanger对象
+	 * @param channel
+	 * @param pluginCollector
+	 */
 	@SuppressWarnings("unchecked")
 	public BufferedRecordExchanger(final Channel channel, final TaskPluginCollector pluginCollector) {
 		assert null != channel;
@@ -46,8 +60,10 @@ public class BufferedRecordExchanger implements RecordSender, RecordReceiver {
 
 		this.channel = channel;
 		this.pluginCollector = pluginCollector;
+		// 这个conf 对应的是TG级别的
 		this.configuration = channel.getConfiguration();
 
+		// 设置交换区的大小
 		this.bufferSize = configuration
 				.getInt(CoreConstant.DATAX_CORE_TRANSPORT_EXCHANGER_BUFFERSIZE);
 		this.buffer = new ArrayList<Record>(bufferSize);
@@ -57,6 +73,7 @@ public class BufferedRecordExchanger implements RecordSender, RecordReceiver {
 				CoreConstant.DATAX_CORE_TRANSPORT_CHANNEL_CAPACITY_BYTE, 8 * 1024 * 1024);
 
 		try {
+			// 从TG对象中获取传输的记录类型
 			BufferedRecordExchanger.RECORD_CLASS = ((Class<? extends Record>) Class
 					.forName(configuration.getString(
                             CoreConstant.DATAX_CORE_TRANSPORT_RECORD_CLASS,

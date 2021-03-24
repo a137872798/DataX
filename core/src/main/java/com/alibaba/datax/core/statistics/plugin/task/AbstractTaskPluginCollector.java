@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Created by jingxing on 14-9-11.
+ * 给插件使用的 负责采集运行时产生的脏数据
  */
 public abstract class AbstractTaskPluginCollector extends TaskPluginCollector {
     private static final Logger LOG = LoggerFactory
@@ -49,6 +50,14 @@ public abstract class AbstractTaskPluginCollector extends TaskPluginCollector {
         this.communication.addMessage(key, value);
     }
 
+    /**
+     * 也是统计一些失败项 并存储到 沟通者中
+     * @param dirtyRecord
+     *            脏数据信息
+     * @param t
+     *            异常信息
+     * @param errorMessage
+     */
     @Override
     public void collectDirtyRecord(Record dirtyRecord, Throwable t,
                                    String errorMessage) {

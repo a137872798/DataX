@@ -16,6 +16,7 @@ import java.util.List;
 /**
  * no comments.
  * Created by liqiang on 16/3/9.
+ * 在读取到数据后  进行了一步转换操作
  */
 public abstract class TransformerExchanger {
 
@@ -31,7 +32,9 @@ public abstract class TransformerExchanger {
     private long totalSuccessRecords = 0;
     private long totalFailedRecords = 0;
 
-
+    /**
+     * 定义了转换的规则
+     */
     private List<TransformerExecution> transformerExecs;
 
     private ClassLoaderSwapper classLoaderSwapper = ClassLoaderSwapper
@@ -49,7 +52,11 @@ public abstract class TransformerExchanger {
         this.currentCommunication = communication;
     }
 
-
+    /**
+     * 拿到数据后 使用转换对象进行处理
+     * @param record
+     * @return
+     */
     public Record doTransformer(Record record) {
         if (transformerExecs == null || transformerExecs.size() == 0) {
             return record;
