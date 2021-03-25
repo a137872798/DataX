@@ -24,6 +24,12 @@ public class JarLoader extends URLClassLoader {
         super(getURLs(paths), parent);
     }
 
+    /**
+     * 寻找相关目录下所有的jar 并设置到类加载器中
+     * 当此时线程绑定的类加载器为该类加载器时 并尝试加载某个类 就会检测该类是否存在于该类加载器下 并进行加载
+     * @param paths
+     * @return
+     */
     private static URL[] getURLs(String[] paths) {
         Validate.isTrue(null != paths && 0 != paths.length,
                 "jar包路径不能为空.");
@@ -35,6 +41,7 @@ public class JarLoader extends URLClassLoader {
         }
 
         List<URL> urls = new ArrayList<URL>();
+        // 寻找这些目录下所有的jar包 存储到urls中
         for (String path : dirs) {
             urls.addAll(doGetURLs(path));
         }
@@ -42,6 +49,11 @@ public class JarLoader extends URLClassLoader {
         return urls.toArray(new URL[0]);
     }
 
+    /**
+     * 递归找到所有的目录
+     * @param path
+     * @param collector
+     */
     private static void collectDirs(String path, List<String> collector) {
         if (null == path || StringUtils.isBlank(path)) {
             return;
@@ -62,6 +74,11 @@ public class JarLoader extends URLClassLoader {
         }
     }
 
+    /**
+     * 将目标目录下所有的jar包找出来
+     * @param path
+     * @return
+     */
     private static List<URL> doGetURLs(final String path) {
         Validate.isTrue(!StringUtils.isBlank(path), "jar包路径不能为空.");
 
@@ -70,7 +87,7 @@ public class JarLoader extends URLClassLoader {
         Validate.isTrue(jarPath.exists() && jarPath.isDirectory(),
                 "jar包路径必须存在且为目录.");
 
-		/* set filter */
+        // 扫描该目录下所有的jar包
         FileFilter jarFilter = new FileFilter() {
             @Override
             public boolean accept(File pathname) {
@@ -84,6 +101,7 @@ public class JarLoader extends URLClassLoader {
 
         for (int i = 0; i < allJars.length; i++) {
             try {
+                // 将所有jar包转换成 URL类型后设置到list中
                 jarURLs.add(allJars[i].toURI().toURL());
             } catch (Exception e) {
                 throw DataXException.asDataXException(

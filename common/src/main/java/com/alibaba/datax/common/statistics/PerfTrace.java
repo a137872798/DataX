@@ -15,11 +15,14 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * PerfTrace 记录 job（local模式），taskGroup（distribute模式），因为这2种都是jvm，即一个jvm里只需要有1个PerfTrace。
+ * 管理各种性能信息的对象
  */
-
 public class PerfTrace {
 
     private static Logger LOG = LoggerFactory.getLogger(PerfTrace.class);
+    /**
+     * 单例模式
+     */
     private static PerfTrace instance;
     private static final Object lock = new Object();
     private String perfTraceId;
@@ -119,21 +122,29 @@ public class PerfTrace {
         }
     }
 
+    /**
+     * 在当前对象下追加一条新记录
+     * @param perfRecord
+     */
     public void tracePerfRecord(PerfRecord perfRecord) {
         try {
+            // 首先确保开启了 性能链路追踪
             if (enable) {
                 long curNanoTime = System.nanoTime();
                 //ArrayList非线程安全
                 switch (perfRecord.getAction()) {
                     case end:
+                        // 该容器统计所有有关end的记录
                         synchronized (totalEndReport) {
                             totalEndReport.add(perfRecord);
 
+                            // 每当内存中囤积的记录数达到一定值 就将记录进行合并 并释放list内存
                             if (totalEndReport.size() > batchSize * 10) {
                                 sumPerf4EndPrint(totalEndReport);
                             }
                         }
 
+                        // 针对单条记录进行存储 上面是针对total记录
                         if (perfReportEnable && needReport(perfRecord)) {
                             synchronized (needReportPool4NotEnd) {
                                 sumPerf4Report.add(curNanoTime,perfRecord);
@@ -143,6 +154,8 @@ public class PerfTrace {
 
                         break;
                     case start:
+                        // 操作流程是 某个性能记录先以start形式调用该方法 代表此时新增了一条统计记录
+                        // 当PerfRecord对应的操作完成后 再次调用该方法 此时状态为end 根据记录的创建时间/当前时间 以及一些数值 存储到统计对象中 并从 needReportPool4NotEnd中移除记录
                         if (perfReportEnable && needReport(perfRecord)) {
                             synchronized (needReportPool4NotEnd) {
                                 needReportPool4NotEnd.add(perfRecord);
@@ -183,6 +196,7 @@ public class PerfTrace {
             return "PerfTrace not enable!";
         }
 
+        // 当生成摘要信息时 将此时内存中残留的所有需要报告的记录插入到 sum中
         if (totalEndReport.size() > 0) {
             sumPerf4EndPrint(totalEndReport);
         }
@@ -422,11 +436,16 @@ public class PerfTrace {
         return null;
     }
 
+    /**
+     * 合并之前统计的数据
+     * @param totalEndReport
+     */
     private void sumPerf4EndPrint(List<PerfRecord> totalEndReport) {
         if (!enable || totalEndReport == null) {
             return;
         }
 
+        // 将记录按照 phase进行合并
         for (PerfRecord perfRecord : totalEndReport) {
             perfRecordMaps4print.putIfAbsent(perfRecord.getPhase(), new SumPerfRecord4Print());
             perfRecordMaps4print.get(perfRecord.getPhase()).add(perfRecord);
@@ -440,6 +459,9 @@ public class PerfTrace {
     }
 
 
+    /**
+     * 存储记录从生成到此时的时间差 并按照类型累加到对应的值上
+     */
     public static class SumPerf4Report {
         long totalTaskRunTimeInMs = 0L;
         long odpsCloseTimeInMs = 0L;
@@ -490,6 +512,9 @@ public class PerfTrace {
         }
     }
 
+    /**
+     * 按照phase 进行合并后的数据
+     */
     public static class SumPerfRecord4Print {
         private long perfTimeTotal = 0;
         private long averageTime = 0;
@@ -507,6 +532,10 @@ public class PerfTrace {
         private int maxTaskId4Records = -1;
         private int maxTGID4Records = -1;
 
+        /**
+         * 将该性能记录累加到当前对象上
+         * @param perfRecord
+         */
         public void add(PerfRecord perfRecord) {
             if (perfRecord == null) {
                 return;

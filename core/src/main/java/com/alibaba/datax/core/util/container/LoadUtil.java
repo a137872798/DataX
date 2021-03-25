@@ -47,7 +47,7 @@ public class LoadUtil {
     private static Configuration pluginRegisterCenter;
 
     /**
-     * jarLoader的缓冲
+     * key 对应某个插件key  value对应自定义类加载器 这样的设计可以确保在插件这一层 jar包是相互隔离的
      */
     private static Map<String, JarLoader> jarLoaderCenter = new HashMap<String, JarLoader>();
 
@@ -66,8 +66,15 @@ public class LoadUtil {
                 pluginName);
     }
 
+    /**
+     * 获取该插件相关的配置项
+     * @param pluginType
+     * @param pluginName
+     * @return
+     */
     private static Configuration getPluginConf(PluginType pluginType,
                                                String pluginName) {
+        // 插件相关的配置一开始就会存储在 pluginRegisterCenter中，当需要获取相关的配置时，只需要以插件类名作为key
         Configuration pluginConf = pluginRegisterCenter
                 .getConfiguration(generatePluginKey(pluginType, pluginName));
 
@@ -82,18 +89,19 @@ public class LoadUtil {
     }
 
     /**
-     * 加载JobPlugin，reader、writer都可能要加载
-     *
-     * @param pluginType
-     * @param pluginName
+     * 通过反射实例化插件对象  在此之前一般已经在当前线程设置了该插件专有的ClassLoader
+     * @param pluginType 定义了插件类型
+     * @param pluginName 定义了插件名
      * @return
      */
     public static AbstractJobPlugin loadJobPlugin(PluginType pluginType,
                                                   String pluginName) {
+        // 此时已经基于反射 获取到了插件.class对象
         Class<? extends AbstractPlugin> clazz = LoadUtil.loadPluginClass(
                 pluginType, pluginName, ContainerType.Job);
 
         try {
+            // 实例化对象后 设置conf
             AbstractJobPlugin jobPlugin = (AbstractJobPlugin) clazz
                     .newInstance();
             jobPlugin.setPluginConf(getPluginConf(pluginType, pluginName));
@@ -169,6 +177,7 @@ public class LoadUtil {
         Configuration pluginConf = getPluginConf(pluginType, pluginName);
         JarLoader jarLoader = LoadUtil.getJarLoader(pluginType, pluginName);
         try {
+            // 可以看到这里加载的都是内部类 xxx$Job/Task
             return (Class<? extends AbstractPlugin>) jarLoader
                     .loadClass(pluginConf.getString("class") + "$"
                             + pluginRunType.value());
@@ -177,13 +186,22 @@ public class LoadUtil {
         }
     }
 
+    /**
+     * 根据指定的插件类型和插件名 生成类加载器
+     * @param pluginType
+     * @param pluginName
+     * @return
+     */
     public static synchronized JarLoader getJarLoader(PluginType pluginType,
                                                       String pluginName) {
+        // 首先获取该插件相关的配置
         Configuration pluginConf = getPluginConf(pluginType, pluginName);
 
+        // 每个插件需要加载的特殊jar包 通过类加载器这一层进行隔离
         JarLoader jarLoader = jarLoaderCenter.get(generatePluginKey(pluginType,
                 pluginName));
         if (null == jarLoader) {
+            // 这类类加载器在初始化时 已经执行了jar包目录
             String pluginPath = pluginConf.getString("path");
             if (StringUtils.isBlank(pluginPath)) {
                 throw DataXException.asDataXException(

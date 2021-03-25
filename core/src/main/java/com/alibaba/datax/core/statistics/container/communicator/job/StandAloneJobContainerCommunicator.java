@@ -25,6 +25,10 @@ public class StandAloneJobContainerCommunicator extends AbstractContainerCommuni
         super.setReporter(new ProcessInnerReporter());
     }
 
+    /**
+     * 对于 job级别的沟通对象 注册TG级别的沟通对象
+     * @param configurationList
+     */
     @Override
     public void registerCommunication(List<Configuration> configurationList) {
         super.getCollector().registerTGCommunication(configurationList);

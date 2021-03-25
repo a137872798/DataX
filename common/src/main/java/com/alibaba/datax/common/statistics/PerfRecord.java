@@ -9,13 +9,16 @@ import java.util.Date;
 
 /**
  * Created by liqiang on 15/8/23.
+ * 描述性能的记录  非传输的数据记录
  */
 @SuppressWarnings("NullableProblems")
 public class PerfRecord implements Comparable<PerfRecord> {
     private static Logger perf = LoggerFactory.getLogger(PerfRecord.class);
     private static String datetimeFormat = "yyyy-MM-dd HH:mm:ss";
 
-
+    /**
+     * 描述该性能记录对应的是哪个阶段
+     */
     public enum PHASE {
         /**
          * task total运行的时间，前10为框架统计，后面为部分插件的个性统计
@@ -65,14 +68,24 @@ public class PerfRecord implements Comparable<PerfRecord> {
         }
     }
 
+    /**
+     * 启动/终止 耗时
+     */
     public enum ACTION{
         start,
         end
     }
 
+    // 该性能记录是针对哪个 任务组/任务
     private final int taskGroupId;
     private final int taskId;
+    /**
+     * 该性能记录对应的阶段
+     */
     private final PHASE phase;
+    /**
+     * 对应的是启动/终止操作
+     */
     private volatile ACTION action;
     private volatile Date startTime;
     private volatile long elapsedTimeInNs = -1;
@@ -88,18 +101,30 @@ public class PerfRecord implements Comparable<PerfRecord> {
         this.phase = phase;
     }
 
+    /**
+     * 在trace对象中 追加一条性能记录 该方法一般就是在处理完某个操作后调用
+     * @param taskGroupId  这些参数用于描述记录信息
+     * @param taskId
+     * @param phase
+     * @param startTime
+     * @param elapsedTimeInNs
+     */
     public static void addPerfRecord(int taskGroupId, int taskId, PHASE phase, long startTime,long elapsedTimeInNs) {
+        // 首先确保开启了性能检测
         if(PerfTrace.getInstance().isEnable()) {
             PerfRecord perfRecord = new PerfRecord(taskGroupId, taskId, phase);
             perfRecord.elapsedTimeInNs = elapsedTimeInNs;
             perfRecord.action = ACTION.end;
             perfRecord.startTime = new Date(startTime);
-            //在PerfTrace里注册
+            // 有一个全局对象会存储整个流程中各种性能记录
             PerfTrace.getInstance().tracePerfRecord(perfRecord);
             perf.info(perfRecord.toString());
         }
     }
 
+    /**
+     * 此时生成了某条性能记录 并开始记录信息 当调用addPerfRecord时 才会统计数据
+     */
     public void start() {
         if(PerfTrace.getInstance().isEnable()) {
             this.startTime = new Date();
@@ -110,6 +135,8 @@ public class PerfRecord implements Comparable<PerfRecord> {
             perf.info(toString());
         }
     }
+
+    // 为record对象增加一些统计信息
 
     public void addCount(long count) {
         this.count += count;

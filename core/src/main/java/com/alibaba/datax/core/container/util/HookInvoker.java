@@ -24,6 +24,8 @@ import java.util.ServiceLoader;
  * 扫描给定目录的所有一级子目录，每个子目录当作一个Hook的目录。
  * 对于每个子目录，必须符合ServiceLoader的标准目录格式，见http://docs.oracle.com/javase/6/docs/api/java/util/ServiceLoader.html。
  * 加载里头的jar，使用ServiceLoader机制调用。
+ *
+ * 也就是允许指定一个上级目录 下面所有目录都按照SPI规则生成 可以按照SPI的方式加载钩子类
  */
 public class HookInvoker {
 
@@ -36,6 +38,12 @@ public class HookInvoker {
      */
     private File baseDir;
 
+    /**
+     *
+     * @param baseDirName
+     * @param conf 某些钩子对象在初始化时 可能需要从configuration中读取某些配置
+     * @param msg
+     */
     public HookInvoker(String baseDirName, Configuration conf, Map<String, Number> msg) {
         this.baseDir = new File(baseDirName);
         this.conf = conf;
@@ -71,19 +79,23 @@ public class HookInvoker {
     }
 
     /**
-     * 从某个目录下加载插件类
+     * 针对单个子级目录 加载所有钩子类
      * @param path
      */
     private void doInvoke(String path) {
         // 使用临时变量存储之前的类加载器
         ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
         try {
+            // 在初始化该类加载器时 已经将对应目录下的jar包设置进去了 之后通过SPI机制加载这些类 并且不同目录下的类 通过类加载器进行隔离
             JarLoader jarLoader = new JarLoader(new String[]{path});
             Thread.currentThread().setContextClassLoader(jarLoader);
+
+            // 记录这些class名字的还是 spi文件 上面只是将这些实现类设置到类加载器中
             Iterator<Hook> hookIt = ServiceLoader.load(Hook.class).iterator();
             if (!hookIt.hasNext()) {
                 LOG.warn("No hook defined under path: " + path);
             } else {
+                // 加载所有hook后 并进行调用
                 Hook hook = hookIt.next();
                 LOG.info("Invoke hook [{}], path: {}", hook.getName(), path);
                 hook.invoke(conf, msg);

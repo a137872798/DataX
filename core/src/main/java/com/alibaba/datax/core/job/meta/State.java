@@ -2,6 +2,7 @@ package com.alibaba.datax.core.job.meta;
 
 /**
  * Created by liupeng on 15/12/21.
+ * 描述job的状态
  */
 public enum State {
     SUBMITTING(10),

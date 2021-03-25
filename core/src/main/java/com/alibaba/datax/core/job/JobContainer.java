@@ -50,6 +50,9 @@ public class JobContainer extends AbstractContainer {
     private static final SimpleDateFormat dateFormat = new SimpleDateFormat(
             "yyyy-MM-dd HH:mm:ss");
 
+    /**
+     * 该对象可以在执行某些代码块的前后 切换类加载器
+     */
     private ClassLoaderSwapper classLoaderSwapper = ClassLoaderSwapper
             .newCurrentThreadClassLoaderSwapper();
 
@@ -59,11 +62,8 @@ public class JobContainer extends AbstractContainer {
 
     private String writerPluginName;
 
-    /**
-     * reader和writer jobContainer的实例
-     */
+    /** DataX总计分为输入/输出2个部分 对应reader/writer */
     private Reader.Job jobReader;
-
     private Writer.Job jobWriter;
 
     private Configuration userConf;
@@ -80,6 +80,9 @@ public class JobContainer extends AbstractContainer {
 
     private int totalStage = 1;
 
+    /**
+     * 该对象用于检测异常记录数量/比率是否超过限制值 并抛出异常终止数据同步
+     */
     private ErrorRecordChecker errorLimit;
 
     public JobContainer(Configuration configuration) {
@@ -100,6 +103,7 @@ public class JobContainer extends AbstractContainer {
         boolean isDryRun = false;
         try {
             this.startTimeStamp = System.currentTimeMillis();
+            // 是否干启动 默认为false
             isDryRun = configuration.getBool(CoreConstant.DATAX_JOB_SETTING_DRYRUN, false);
             if(isDryRun) {
                 LOG.info("jobContainer starts to do preCheck ...");
@@ -181,8 +185,13 @@ public class JobContainer extends AbstractContainer {
         }
     }
 
+    /**
+     * 当本次是dryRun时 会执行该方法
+     */
     private void preCheck() {
+        // 主要是初始化PluginCollector和reader/writer插件
         this.preCheckInit();
+        // 调整channel数量
         this.adjustChannelNumber();
 
         if (this.needChannelNumber <= 0) {
@@ -193,6 +202,9 @@ public class JobContainer extends AbstractContainer {
         LOG.info("PreCheck通过");
     }
 
+    /**
+     * 为一些检查对象做初始化工作
+     */
     private void preCheckInit() {
         this.jobId = this.configuration.getLong(
                 CoreConstant.DATAX_CORE_CONTAINER_JOB_ID, -1);
@@ -206,37 +218,53 @@ public class JobContainer extends AbstractContainer {
 
         Thread.currentThread().setName("job-" + this.jobId);
 
+        // 获取job级别的 协调者信息采集器
         JobPluginCollector jobPluginCollector = new DefaultJobPluginCollector(
                 this.getContainerCommunicator());
         this.jobReader = this.preCheckReaderInit(jobPluginCollector);
         this.jobWriter = this.preCheckWriterInit(jobPluginCollector);
     }
 
+    /**
+     * 针对reader对象进行检测
+     * @param jobPluginCollector
+     * @return
+     */
     private Reader.Job preCheckReaderInit(JobPluginCollector jobPluginCollector) {
+        // 获取reader插件名
         this.readerPluginName = this.configuration.getString(
                 CoreConstant.DATAX_JOB_CONTENT_READER_NAME);
+        // 以插件为单位 创建独立的classLoader 并设置到当前线程中
         classLoaderSwapper.setCurrentThreadClassLoader(LoadUtil.getJarLoader(
                 PluginType.READER, this.readerPluginName));
 
+        // 基于反射机制 开始实例化对象
         Reader.Job jobReader = (Reader.Job) LoadUtil.loadJobPlugin(
                 PluginType.READER, this.readerPluginName);
 
+        // 强制指定为干启动
         this.configuration.set(CoreConstant.DATAX_JOB_CONTENT_READER_PARAMETER + ".dryRun", true);
 
-        // 设置reader的jobConfig
+        // 默认情况下这2个配置是一样的
         jobReader.setPluginJobConf(this.configuration.getConfiguration(
                 CoreConstant.DATAX_JOB_CONTENT_READER_PARAMETER));
-        // 设置reader的readerConfig
         jobReader.setPeerPluginJobConf(this.configuration.getConfiguration(
                 CoreConstant.DATAX_JOB_CONTENT_READER_PARAMETER));
 
+        // 设置存储协调对象的 collector
         jobReader.setJobPluginCollector(jobPluginCollector);
 
+        // 恢复当前线程绑定的类加载器
         classLoaderSwapper.restoreCurrentThreadClassLoader();
         return jobReader;
     }
 
 
+    /**
+     * 初始化writer相关的插件 逻辑跟上面基本一致
+     * @param jobPluginCollector
+     * @return
+     */
     private Writer.Job preCheckWriterInit(JobPluginCollector jobPluginCollector) {
         this.writerPluginName = this.configuration.getString(
                 CoreConstant.DATAX_JOB_CONTENT_WRITER_NAME);
@@ -248,10 +276,8 @@ public class JobContainer extends AbstractContainer {
 
         this.configuration.set(CoreConstant.DATAX_JOB_CONTENT_WRITER_PARAMETER + ".dryRun", true);
 
-        // 设置writer的jobConfig
         jobWriter.setPluginJobConf(this.configuration.getConfiguration(
                 CoreConstant.DATAX_JOB_CONTENT_WRITER_PARAMETER));
-        // 设置reader的readerConfig
         jobWriter.setPeerPluginJobConf(this.configuration.getConfiguration(
                 CoreConstant.DATAX_JOB_CONTENT_READER_PARAMETER));
 
@@ -413,17 +439,22 @@ public class JobContainer extends AbstractContainer {
         return contentConfig.size();
     }
 
+    /**
+     * 调整通道数量 通道数量代表着什么 与TG数量有什么关系
+     */
     private void adjustChannelNumber() {
         int needChannelNumberByByte = Integer.MAX_VALUE;
         int needChannelNumberByRecord = Integer.MAX_VALUE;
 
+        // 有关byte写入速度的限制 类似lucene的写入限制
         boolean isByteLimit = (this.configuration.getInt(
                 CoreConstant.DATAX_JOB_SETTING_SPEED_BYTE, 0) > 0);
         if (isByteLimit) {
+            // 获取全局限流值
             long globalLimitedByteSpeed = this.configuration.getInt(
                     CoreConstant.DATAX_JOB_SETTING_SPEED_BYTE, 10 * 1024 * 1024);
 
-            // 在byte流控情况下，单个Channel流量最大值必须设置，否则报错！
+            // 在configuration中已经设置了byte的限流写入 所以这里必须要对channel传输速度做限制
             Long channelLimitedByteSpeed = this.configuration
                     .getLong(CoreConstant.DATAX_CORE_TRANSPORT_CHANNEL_SPEED_BYTE);
             if (channelLimitedByteSpeed == null || channelLimitedByteSpeed <= 0) {
@@ -432,19 +463,24 @@ public class JobContainer extends AbstractContainer {
                         "在有总bps限速条件下，单个channel的bps值不能为空，也不能为非正数");
             }
 
+            // 总限流值/单个channel限流值 得到的就是channel数量
             needChannelNumberByByte =
                     (int) (globalLimitedByteSpeed / channelLimitedByteSpeed);
+
+            // 当总限流值小于单个channel限流值时 设置为最小值1
             needChannelNumberByByte =
                     needChannelNumberByByte > 0 ? needChannelNumberByByte : 1;
             LOG.info("Job set Max-Byte-Speed to " + globalLimitedByteSpeed + " bytes.");
         }
 
+        // 判断是否有record的限制
         boolean isRecordLimit = (this.configuration.getInt(
                 CoreConstant.DATAX_JOB_SETTING_SPEED_RECORD, 0)) > 0;
         if (isRecordLimit) {
             long globalLimitedRecordSpeed = this.configuration.getInt(
                     CoreConstant.DATAX_JOB_SETTING_SPEED_RECORD, 100000);
 
+            // 获取channel对于record的限流值
             Long channelLimitedRecordSpeed = this.configuration.getLong(
                     CoreConstant.DATAX_CORE_TRANSPORT_CHANNEL_SPEED_RECORD);
             if (channelLimitedRecordSpeed == null || channelLimitedRecordSpeed <= 0) {
@@ -468,6 +504,8 @@ public class JobContainer extends AbstractContainer {
             return;
         }
 
+        // 此时代表 既没有按照record进行限流 也没有按照byte进行限流 就不能通过这一层来计算需要多少个channel了 尝试直接获取channel的限制数量
+        // (同时潜在规则就是channel本身的限流配置优先级是最低的)
         boolean isChannelLimit = (this.configuration.getInt(
                 CoreConstant.DATAX_JOB_SETTING_SPEED_CHANNEL, 0) > 0);
         if (isChannelLimit) {
@@ -480,6 +518,7 @@ public class JobContainer extends AbstractContainer {
             return;
         }
 
+        // 要求必须设置限流值
         throw DataXException.asDataXException(
                 FrameworkErrorCode.CONFIG_ERROR,
                 "Job运行速度必须设置");

@@ -49,10 +49,18 @@ public final class CommunicationTool {
     public static final String TRANSFORMER_FILTER_RECORDS = "totalTransformerFilterRecords";
     public static final String TRANSFORMER_NAME_PREFIX = "usedTimeByTransformer_";
 
+    /**
+     * 基于处理某轮任务前后的统计数据 生成报告数据
+     * @param now
+     * @param old
+     * @param totalStage
+     * @return
+     */
     public static Communication getReportCommunication(Communication now, Communication old, int totalStage) {
         Validate.isTrue(now != null && old != null,
                 "为汇报准备的新旧metric不能为null");
 
+        // 计算一些总和信息 插入到now中
         long totalReadRecords = getTotalReadRecords(now);
         long totalReadBytes = getTotalReadBytes(now);
         now.setLongCounter(TOTAL_READ_RECORDS, totalReadRecords);
@@ -62,6 +70,7 @@ public final class CommunicationTool {
         now.setLongCounter(WRITE_SUCCEED_RECORDS, getWriteSucceedRecords(now));
         now.setLongCounter(WRITE_SUCCEED_BYTES, getWriteSucceedBytes(now));
 
+        // 计算本轮的一些传输byte速率 传输record速率 并设置到最新的统计信息中
         long timeInterval = now.getTimestamp() - old.getTimestamp();
         long sec = timeInterval <= 1000 ? 1 : timeInterval / 1000;
         long bytesSpeed = (totalReadBytes

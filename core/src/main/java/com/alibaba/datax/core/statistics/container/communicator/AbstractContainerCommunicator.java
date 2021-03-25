@@ -19,7 +19,7 @@ import java.util.Map;
 public abstract class AbstractContainerCommunicator {
 
     /**
-     * 相关的全局配置
+     * 与沟通者级别匹配的配置对象
      */
     private Configuration configuration;
     /**
@@ -27,13 +27,13 @@ public abstract class AbstractContainerCommunicator {
      */
     private AbstractCollector collector;
     /**
-     * 该对象默认就是覆盖Communicator的旧数据
+     * 在schduler的事件循环中 每当间隔一个report时间后 就会触发一个report方法 应该是向外输出什么信息
      */
     private AbstractReporter reporter;
 
     /**
      * 如果当前是job级别容器 此时对应的jobId
-     * 如果当前是TG级别的容器 此时所属的Job
+     * 如果当前是TG级别的容器 此时所属的Job的jobId
      */
     private Long jobId;
 
@@ -65,6 +65,10 @@ public abstract class AbstractContainerCommunicator {
         return jobId;
     }
 
+    /**
+     * 在初始化时 默认只设置jobId
+     * @param configuration
+     */
     public AbstractContainerCommunicator(Configuration configuration) {
         this.configuration = configuration;
         this.jobId = configuration.getLong(CoreConstant.DATAX_CORE_CONTAINER_JOB_ID);

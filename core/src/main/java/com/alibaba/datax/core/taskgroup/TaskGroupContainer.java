@@ -34,6 +34,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
+/**
+ * 对应TG级别的容器  该对象填装了必要的信息  而TGRunner对象的初始化 就需要该对象
+ */
 public class TaskGroupContainer extends AbstractContainer {
     private static final Logger LOG = LoggerFactory
             .getLogger(TaskGroupContainer.class);
@@ -60,9 +63,14 @@ public class TaskGroupContainer extends AbstractContainer {
 
     private TaskMonitor taskMonitor = TaskMonitor.getInstance();
 
+    /**
+     * 使用一个 TGConfiguration进行初始化
+     * @param configuration
+     */
     public TaskGroupContainer(Configuration configuration) {
         super(configuration);
 
+        // 初始化TG级别的沟通对象
         initCommunicator(configuration);
 
         this.jobId = this.configuration.getLong(
@@ -76,9 +84,12 @@ public class TaskGroupContainer extends AbstractContainer {
                 CoreConstant.DATAX_CORE_STATISTICS_COLLECTOR_PLUGIN_TASKCLASS);
     }
 
+    /**
+     * 根据相关配置初始化TG级别的沟通对象 其他组件通过沟通对象观察 job/TG的执行情况
+     * @param configuration
+     */
     private void initCommunicator(Configuration configuration) {
         super.setContainerCommunicator(new StandaloneTGContainerCommunicator(configuration));
-
     }
 
     public long getJobId() {

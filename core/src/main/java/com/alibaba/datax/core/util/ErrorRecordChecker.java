@@ -19,6 +19,7 @@ public final class ErrorRecordChecker {
     private static final Logger LOG = LoggerFactory
             .getLogger(ErrorRecordChecker.class);
 
+    // 允许的错误记录数 以及允许的错误比率
     private Long recordLimit;
     private Double percentageLimit;
 
@@ -27,6 +28,11 @@ public final class ErrorRecordChecker {
                 configuration.getDouble(CoreConstant.DATAX_JOB_SETTING_ERRORLIMIT_PERCENT));
     }
 
+    /**
+     * 同时可以看出 如果未设置的情况，应该是不会监控异常记录数量的
+     * @param rec  异常数量上限
+     * @param percentage  异常比例
+     */
     public ErrorRecordChecker(Long rec, Double percentage) {
         recordLimit = rec;
         percentageLimit = percentage;
@@ -45,11 +51,16 @@ public final class ErrorRecordChecker {
         }
     }
 
+    /**
+     * 通过检测协调者此时记录的信息 来判断是否超过限制
+     * @param communication
+     */
     public void checkRecordLimit(Communication communication) {
         if (recordLimit == null) {
             return;
         }
 
+        // 此时异常记录数量已经超出限制，抛出异常终止任务
         long errorNumber = CommunicationTool.getTotalErrorRecords(communication);
         if (recordLimit < errorNumber) {
             LOG.debug(
@@ -69,6 +80,7 @@ public final class ErrorRecordChecker {
         LOG.debug(String.format(
                 "Error-limit set to %f, error percent check.", percentageLimit));
 
+        // 计算异常率 并检测是否超过上限
         long total = CommunicationTool.getTotalReadRecords(communication);
         long error = CommunicationTool.getTotalErrorRecords(communication);
 

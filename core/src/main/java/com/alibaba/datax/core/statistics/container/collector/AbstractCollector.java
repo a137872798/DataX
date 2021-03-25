@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 将沟通对象的级别细化到task
+ * 将内部维护的数据细化到task级别  本容器可能是TG级别 也可能是job级别
  */
 public abstract class AbstractCollector {
 
@@ -21,7 +21,7 @@ public abstract class AbstractCollector {
     private Map<Integer, Communication> taskCommunicationMap = new ConcurrentHashMap<Integer, Communication>();
 
     /**
-     * 每个容器对应一个job
+     * 无论是job 还是TG 他们都拥有jobId
      */
     private Long jobId;
 
@@ -38,21 +38,21 @@ public abstract class AbstractCollector {
     }
 
     /**
-     * 可以看到 容器级别可以以TG为单位， 每个容器对应一个configuration  那么这里对应一组configuration 就是对应多个TG
+     * 目前只有针对 job 级别的沟通者会调用该方法 该方法通过读取TGConfiguration
      * @param taskGroupConfigurationList
      */
     public void registerTGCommunication(List<Configuration> taskGroupConfigurationList) {
         for (Configuration config : taskGroupConfigurationList) {
-            // 每个任务组存在一个id
             int taskGroupId = config.getInt(
                     CoreConstant.DATAX_CORE_CONTAINER_TASKGROUP_ID);
+            // 这里为什么要用一个额外的对象去存储 而不是直接用本对象
             LocalTGCommunicationManager.registerTaskGroupCommunication(taskGroupId, new Communication());
         }
     }
 
     /**
-     * 插入task级别的沟通对象
-     * @param taskConfigurationList
+     * 插入task级别的沟通对象  该方法会在TG级别的沟通对象中调用
+     * @param taskConfigurationList 对应task级别的config
      */
     public void registerTaskCommunication(List<Configuration> taskConfigurationList) {
         for (Configuration taskConfig : taskConfigurationList) {
@@ -62,7 +62,7 @@ public abstract class AbstractCollector {
     }
 
     /**
-     * 该对象是关联在 ContainerCommunicator上的 根据容器的级别不同 这里可能返回的是TG级别 也可能是Job级别
+     * 将TG级别下 或者job级别下所有的task信息收集起来并返回
      * @return
      */
     public Communication collectFromTask() {
@@ -77,16 +77,34 @@ public abstract class AbstractCollector {
         return communication;
     }
 
+    /**
+     * 返回TG级别的沟通对象 实际上针对TG级别的collector 应该是返回空Communication 因为TG级别的collector不会调用生成TG沟通对象的方法
+     * @return
+     */
     public abstract Communication collectFromTaskGroup();
 
+    /**
+     * 同上 但是没有将数据合并
+     * @return
+     */
     public Map<Integer, Communication> getTGCommunicationMap() {
         return LocalTGCommunicationManager.getTaskGroupCommunicationMap();
     }
 
+    /**
+     * 获取某个指定的TG
+     * @param taskGroupId
+     * @return
+     */
     public Communication getTGCommunication(Integer taskGroupId) {
         return LocalTGCommunicationManager.getTaskGroupCommunication(taskGroupId);
     }
 
+    /**
+     * 获取任务级别的沟通对象
+     * @param taskId
+     * @return
+     */
     public Communication getTaskCommunication(Integer taskId) {
         return this.taskCommunicationMap.get(taskId);
     }

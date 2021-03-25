@@ -5,18 +5,18 @@ import com.alibaba.datax.core.statistics.container.communicator.AbstractContaine
 import org.apache.commons.lang.Validate;
 
 /**
- * 容器的抽象类 容器既可以是针对taskGroup的 也可以是针对job的
- * Engine来定义整个数据转换/传输逻辑 而容器对象将他们包裹起来 外部通过协调者对象获取任务运行信息
+ * 该对象从configuration中抽取必要的信息用于描述 TG/job
  */
 public abstract class AbstractContainer {
 
     /**
-     * 全局配置对象
-     */
+     * 初始化该对象时使用的配置项
+     * 不同的级别对应不同的配置 job对应全局配置 TG对应任务组级别配置
+      */
     protected Configuration configuration;
 
     /**
-     * 当容器是针对taskGroup级别时 对应的协调者应该也是TG级别
+     * 相匹配的沟通者 维护的信息维度也不同
      */
     protected AbstractContainerCommunicator containerCommunicator;
 
@@ -38,9 +38,6 @@ public abstract class AbstractContainer {
         this.containerCommunicator = containerCommunicator;
     }
 
-    /**
-     * 该容器对外暴露了一个start方法  在调用engine.start 后会转发到该方法
-     */
     public abstract void start();
 
 }
