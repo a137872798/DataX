@@ -259,6 +259,12 @@ public class CommonRdbmsWriter {
             DBUtil.closeDBResources(null, null, connection);
         }
 
+        /**
+         * 核心的写入逻辑
+         * @param recordReceiver
+         * @param taskPluginCollector
+         * @param connection
+         */
         public void startWriteWithConnection(RecordReceiver recordReceiver, TaskPluginCollector taskPluginCollector, Connection connection) {
             this.taskPluginCollector = taskPluginCollector;
 
@@ -272,6 +278,7 @@ public class CommonRdbmsWriter {
             int bufferBytes = 0;
             try {
                 Record record;
+                // 从receiver中挨个读取记录
                 while ((record = recordReceiver.getFromReader()) != null) {
                     if (record.getColumnNumber() != this.columnNumber) {
                         // 源头读取字段列数与目的表字段写入列数不相等，直接报错
@@ -284,9 +291,11 @@ public class CommonRdbmsWriter {
                                                 this.columnNumber));
                     }
 
+                    // 也是将数据缓存在本地
                     writeBuffer.add(record);
                     bufferBytes += record.getMemorySize();
 
+                    // 当超过限定值时 强制刷盘
                     if (writeBuffer.size() >= batchSize || bufferBytes >= batchByteSize) {
                         doBatchInsert(connection, writeBuffer);
                         writeBuffer.clear();

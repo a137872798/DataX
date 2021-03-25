@@ -23,6 +23,11 @@ public final class OriginalConfPretreatmentUtil {
 //        doPretreatment(originalConfig,null);
 //    }
 
+    /**
+     * 写入的检查项不同
+     * @param originalConfig
+     * @param dataBaseType
+     */
     public static void doPretreatment(Configuration originalConfig, DataBaseType dataBaseType) {
         // 检查 username/password 配置（必填）
         originalConfig.getNecessaryValue(Key.USERNAME, DBUtilErrorCode.REQUIRED_VALUE);
@@ -36,6 +41,10 @@ public final class OriginalConfPretreatmentUtil {
         dealWriteMode(originalConfig, dataBaseType);
     }
 
+    /**
+     * 写入必须要求设置batchSize
+     * @param originalConfig
+     */
     public static void doCheckBatchSize(Configuration originalConfig) {
         // 检查batchSize 配置（选填，如果未填写，则设置为默认值）
         int batchSize = originalConfig.getInt(Key.BATCH_SIZE, Constant.DEFAULT_BATCH_SIZE);
@@ -140,6 +149,11 @@ public final class OriginalConfPretreatmentUtil {
         dealColumnConf(originalConfig, jdbcConnectionFactory, oneTable);
     }
 
+    /**
+     * 当获取到reader拉取的数据时 如何处理 默认采用insert
+     * @param originalConfig
+     * @param dataBaseType
+     */
     public static void dealWriteMode(Configuration originalConfig, DataBaseType dataBaseType) {
         List<String> columns = originalConfig.getList(Key.COLUMN, String.class);
 
@@ -160,6 +174,7 @@ public final class OriginalConfPretreatmentUtil {
             forceUseUpdate = true;
         }
 
+        // 这里生成insert语句的模版
         String writeDataSqlTemplate = WriterUtil.getWriteTemplate(columns, valueHolders, writeMode,dataBaseType, forceUseUpdate);
 
         LOG.info("Write data [\n{}\n], which jdbcUrl like:[{}]", writeDataSqlTemplate, jdbcUrl);

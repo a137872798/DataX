@@ -39,6 +39,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+/**
+ * 有关DB的通用模板
+ */
 public class CommonRdbmsReader {
 
     public static class Job {
@@ -50,6 +53,10 @@ public class CommonRdbmsReader {
             SingleTableSplitUtil.DATABASE_TYPE = dataBaseType;
         }
 
+        /**
+         * 为之后从DB拉取数据做准备
+         * @param originalConfig
+         */
         public void init(Configuration originalConfig) {
 
             OriginalConfPretreatmentUtil.doPretreatment(originalConfig);
@@ -169,6 +176,13 @@ public class CommonRdbmsReader {
 
         }
 
+        /**
+         * 执行之前拆分的 task
+         * @param readerSliceConfig
+         * @param recordSender
+         * @param taskPluginCollector
+         * @param fetchSize
+         */
         public void startRead(Configuration readerSliceConfig,
                               RecordSender recordSender,
                               TaskPluginCollector taskPluginCollector, int fetchSize) {
@@ -205,6 +219,7 @@ public class CommonRdbmsReader {
                 long rsNextUsedTime = 0;
                 long lastTime = System.nanoTime();
                 while (rs.next()) {
+                    // 将结果写入到exchange中 (在这一层做了缓冲区 下层是channel 而writer会直接访问到channel)
                     rsNextUsedTime += (System.nanoTime() - lastTime);
                     this.transportOneRecord(recordSender, rs,
                             metaData, columnNumber, mandatoryEncoding, taskPluginCollector);

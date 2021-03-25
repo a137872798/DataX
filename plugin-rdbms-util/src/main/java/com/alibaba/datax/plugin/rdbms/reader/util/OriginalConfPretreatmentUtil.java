@@ -22,6 +22,10 @@ public final class OriginalConfPretreatmentUtil {
 
     public static DataBaseType DATABASE_TYPE;
 
+    /**
+     * 检测查询数据的必要参数
+     * @param originalConfig
+     */
     public static void doPretreatment(Configuration originalConfig) {
         // 检查 username/password 配置（必填）
         originalConfig.getNecessaryValue(Key.USERNAME,
@@ -33,6 +37,10 @@ public final class OriginalConfPretreatmentUtil {
         simplifyConf(originalConfig);
     }
 
+    /**
+     * 这个是查询数据的条件
+     * @param originalConfig
+     */
     public static void dealWhere(Configuration originalConfig) {
         String where = originalConfig.getString(Key.WHERE, null);
         if(StringUtils.isNotBlank(where)) {
@@ -53,6 +61,7 @@ public final class OriginalConfPretreatmentUtil {
      * </ol>
      */
     private static void simplifyConf(Configuration originalConfig) {
+        // true 代表table模式 false代表querySql模式
         boolean isTableMode = recognizeTableOrQuerySqlMode(originalConfig);
         originalConfig.set(Constant.IS_TABLE_MODE, isTableMode);
 
@@ -61,11 +70,16 @@ public final class OriginalConfPretreatmentUtil {
         dealColumnConf(originalConfig);
     }
 
+    /**
+     * 抽取jdbc 和 table的相关参数信息
+     * @param originalConfig
+     */
     private static void dealJdbcAndTable(Configuration originalConfig) {
         String username = originalConfig.getString(Key.USERNAME);
         String password = originalConfig.getString(Key.PASSWORD);
         boolean checkSlave = originalConfig.getBool(Key.CHECK_SLAVE, false);
         boolean isTableMode = originalConfig.getBool(Constant.IS_TABLE_MODE);
+        // 干启动模式就要进行预检查
         boolean isPreCheck = originalConfig.getBool(Key.DRYRUN,false);
 
         List<Object> conns = originalConfig.getList(Constant.CONN_MARK,
@@ -89,21 +103,24 @@ public final class OriginalConfPretreatmentUtil {
                 jdbcUrl = DBUtil.chooseJdbcUrlWithoutRetry(DATABASE_TYPE, jdbcUrls,
                         username, password, preSql, checkSlave);
             } else {
+                // 只要找到一条可用jdbc连接就行
                 jdbcUrl = DBUtil.chooseJdbcUrl(DATABASE_TYPE, jdbcUrls,
                         username, password, preSql, checkSlave);
             }
 
+            // 拼上一些后缀信息
             jdbcUrl = DATABASE_TYPE.appendJDBCSuffixForReader(jdbcUrl);
 
-            // 回写到connection[i].jdbcUrl
+            // 用这条可用jdbc连接覆盖之前的数据
             originalConfig.set(String.format("%s[%d].%s", Constant.CONN_MARK,
                     i, Key.JDBC_URL), jdbcUrl);
 
             LOG.info("Available jdbcUrl:{}.",jdbcUrl);
 
+            // 如果针对的级别是某个表
             if (isTableMode) {
                 // table 方式
-                // 对每一个connection 上配置的table 项进行解析(已对表名称进行了 ` 处理的)
+                // 对每一个connection 上配置的table 项进行解析(已对表名称进行了处理的)
                 List<String> tables = connConf.getList(Key.TABLE, String.class);
 
                 List<String> expandedTables = TableExpandUtil.expandTableConf(
@@ -117,6 +134,7 @@ public final class OriginalConfPretreatmentUtil {
 
                 tableNum += expandedTables.size();
 
+                // 生成每个conn下要获取哪些table的数据
                 originalConfig.set(String.format("%s[%d].%s",
                         Constant.CONN_MARK, i, Key.TABLE), expandedTables);
             } else {
@@ -127,12 +145,17 @@ public final class OriginalConfPretreatmentUtil {
         originalConfig.set(Constant.TABLE_NUMBER_MARK, tableNum);
     }
 
+    /**
+     * 解析列信息
+     * @param originalConfig
+     */
     private static void dealColumnConf(Configuration originalConfig) {
         boolean isTableMode = originalConfig.getBool(Constant.IS_TABLE_MODE);
 
         List<String> userConfiguredColumns = originalConfig.getList(Key.COLUMN,
                 String.class);
 
+        // 当采用的是表模式时  查看有哪些column是需要处理的
         if (isTableMode) {
             if (null == userConfiguredColumns
                     || userConfiguredColumns.isEmpty()) {
@@ -141,6 +164,7 @@ public final class OriginalConfPretreatmentUtil {
             } else {
                 String splitPk = originalConfig.getString(Key.SPLIT_PK, null);
 
+                // 代表需要该table下的所有 column
                 if (1 == userConfiguredColumns.size()
                         && "*".equals(userConfiguredColumns.get(0))) {
                     LOG.warn("您的配置文件中的列配置存在一定的风险. 因为您未配置读取数据库表的列，当您的表字段个数、类型有变动时，可能影响任务正确性甚至会运行出错。请检查您的配置并作出修改.");
@@ -156,6 +180,7 @@ public final class OriginalConfPretreatmentUtil {
                     String tableName = originalConfig.getString(String.format(
                             "%s[0].%s[0]", Constant.CONN_MARK, Key.TABLE));
 
+                    // 获取该表下所有的column 这里需要访问table
                     List<String> allColumns = DBUtil.getTableColumns(
                             DATABASE_TYPE, jdbcUrl, username, password,
                             tableName);
@@ -165,6 +190,7 @@ public final class OriginalConfPretreatmentUtil {
                     allColumns = ListUtil.valueToLowerCase(allColumns);
                     List<String> quotedColumns = new ArrayList<String>();
 
+                    // 如果存在多条column 不允许使用 *
                     for (String column : userConfiguredColumns) {
                         if ("*".equals(column)) {
                             throw DataXException.asDataXException(
@@ -189,6 +215,7 @@ public final class OriginalConfPretreatmentUtil {
                     originalConfig.set(Key.COLUMN_LIST, quotedColumns);
                     originalConfig.set(Key.COLUMN,
                             StringUtils.join(quotedColumns, ","));
+                    // 如果设置了主键 要求必须存在于table中
                     if (StringUtils.isNotBlank(splitPk)) {
                         if (!allColumns.contains(splitPk.toLowerCase())) {
                             throw DataXException.asDataXException(DBUtilErrorCode.ILLEGAL_SPLIT_PK,
@@ -223,8 +250,15 @@ public final class OriginalConfPretreatmentUtil {
 
     }
 
+    /**
+     * 确认使用的模式
+     * @param originalConfig
+     * @return
+     */
     private static boolean recognizeTableOrQuerySqlMode(
             Configuration originalConfig) {
+
+        // 从配置项中 获取描述连接的信息
         List<Object> conns = originalConfig.getList(Constant.CONN_MARK,
                 Object.class);
 
@@ -237,8 +271,11 @@ public final class OriginalConfPretreatmentUtil {
         boolean isTableMode = false;
         boolean isQuerySqlMode = false;
         for (int i = 0, len = conns.size(); i < len; i++) {
+            // 生成有关连接的配置项
             Configuration connConf = Configuration
                     .from(conns.get(i).toString());
+
+            // 检测该连接的模式
             table = connConf.getString(Key.TABLE, null);
             querySql = connConf.getString(Key.QUERY_SQL, null);
 

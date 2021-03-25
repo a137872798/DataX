@@ -94,6 +94,10 @@ public class BufferedRecordExchanger implements RecordSender, RecordReceiver {
 		}
 	}
 
+	/**
+	 * reader 每拉取到一条记录时 通过该对象传给channel
+	 * @param record
+	 */
 	@Override
 	public void sendToWriter(Record record) {
 		if(shutdown){
@@ -107,6 +111,7 @@ public class BufferedRecordExchanger implements RecordSender, RecordReceiver {
 			return;
 		}
 
+		// 在这里做了一层缓冲区 增加性能
 		boolean isFull = (this.bufferIndex >= this.bufferSize || this.memoryBytes.get() + record.getMemorySize() > this.byteCapacity);
 		if (isFull) {
 			flush();
@@ -133,6 +138,7 @@ public class BufferedRecordExchanger implements RecordSender, RecordReceiver {
 		if(shutdown){
 			throw DataXException.asDataXException(CommonErrorCode.SHUT_DOWN_TASK, "");
 		}
+		// 将缓冲区中所有残留数据写入到channel
 		flush();
 		this.channel.pushTerminate(TerminateRecord.get());
 	}

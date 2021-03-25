@@ -76,8 +76,14 @@ public class JobContainer extends AbstractContainer {
 
     private long endTransferTimeStamp;
 
+    /**
+     * 针对整个job而言 计算出合适的channel数量
+     */
     private int needChannelNumber;
 
+    /**
+     * job在拆分后 总计有多少个task
+     */
     private int totalStage = 1;
 
     /**
@@ -87,13 +93,11 @@ public class JobContainer extends AbstractContainer {
 
     public JobContainer(Configuration configuration) {
         super(configuration);
-
         errorLimit = new ErrorRecordChecker(configuration);
     }
 
     /**
-     * jobContainer主要负责的工作全部在start()里面，包括init、prepare、split、scheduler、
-     * post以及destroy和statistics
+     * 这里包含了如何拆解 job 使用schedule执行TG的逻辑
      */
     @Override
     public void start() {
@@ -105,23 +109,32 @@ public class JobContainer extends AbstractContainer {
             this.startTimeStamp = System.currentTimeMillis();
             // 是否干启动 默认为false
             isDryRun = configuration.getBool(CoreConstant.DATAX_JOB_SETTING_DRYRUN, false);
+            // TODO 忽略干启动吧 无非就是做一些校验
             if(isDryRun) {
                 LOG.info("jobContainer starts to do preCheck ...");
                 this.preCheck();
             } else {
                 userConf = configuration.clone();
                 LOG.debug("jobContainer starts to do preHandle ...");
+
+                // 从config中获取预处理插件  并执行预处理逻辑
                 this.preHandle();
 
                 LOG.debug("jobContainer starts to do init ...");
+                // 进行初始化 主要就是加载 reader.job/writer.job插件 设置job级别的相关参数 并执行init方法
                 this.init();
                 LOG.info("jobContainer starts to do prepare ...");
+                // 执行plugin.job.prepare
                 this.prepare();
                 LOG.info("jobContainer starts to do split ...");
+                // 这里开始将job拆解成多个 task对象
                 this.totalStage = this.split();
                 LOG.info("jobContainer starts to do schedule ...");
+                // 这里开始将task合并成多个TG 并通过schedule 执行任务 schedule本身是一条线程在轮训 而针对每个TG 会单独使用一条线程轮训每个任务的执行状态
+                // 而每个task 又是单独对应一条线程模型
                 this.schedule();
                 LOG.debug("jobContainer starts to do post ...");
+                // 当main线程从 schedule返回时 代表任务已经成功完成 否则会进入下面的catch
                 this.post();
 
                 LOG.debug("jobContainer starts to do postHandle ...");
@@ -335,7 +348,11 @@ public class JobContainer extends AbstractContainer {
         this.prepareJobWriter();
     }
 
+    /**
+     * 进行预处理
+     */
     private void preHandle() {
+        // 获取预处理插件
         String handlerPluginTypeStr = this.configuration.getString(
                 CoreConstant.DATAX_JOB_PREHANDLER_PLUGINTYPE);
         if(!StringUtils.isNotEmpty(handlerPluginTypeStr)){
@@ -353,6 +370,7 @@ public class JobContainer extends AbstractContainer {
         String handlerPluginName = this.configuration.getString(
                 CoreConstant.DATAX_JOB_PREHANDLER_PLUGINNAME);
 
+        // 根据插件类型和 插件名 加载插件类
         classLoaderSwapper.setCurrentThreadClassLoader(LoadUtil.getJarLoader(
                 handlerPluginType, handlerPluginName));
 
@@ -361,9 +379,11 @@ public class JobContainer extends AbstractContainer {
 
         JobPluginCollector jobPluginCollector = new DefaultJobPluginCollector(
                 this.getContainerCommunicator());
+        // 为插件设置信息采集对象
         handler.setJobPluginCollector(jobPluginCollector);
 
         //todo configuration的安全性，将来必须保证
+        // 执行预处理逻辑
         handler.preHandler(configuration);
         classLoaderSwapper.restoreCurrentThreadClassLoader();
 
@@ -410,27 +430,29 @@ public class JobContainer extends AbstractContainer {
      * 然后，为避免顺序给读写端带来长尾影响，将整合的结果shuffler掉
      */
     private int split() {
+        // 根据限流值 推断最合适的channel数量
         this.adjustChannelNumber();
 
         if (this.needChannelNumber <= 0) {
             this.needChannelNumber = 1;
         }
 
+        // 根据channel 数量将job 拆分成多个task
         List<Configuration> readerTaskConfigs = this
                 .doReaderSplit(this.needChannelNumber);
         int taskNumber = readerTaskConfigs.size();
+        // 下面要按照 writer进行拆分  并且 writer的数量要跟着reader走 才能最大化利用率
         List<Configuration> writerTaskConfigs = this
                 .doWriterSplit(taskNumber);
 
+        // 转换器列表
         List<Configuration> transformerList = this.configuration.getListConfiguration(CoreConstant.DATAX_JOB_CONTENT_TRANSFORMER);
 
         LOG.debug("transformer configuration: "+ JSON.toJSONString(transformerList));
-        /**
-         * 输入是reader和writer的parameter list，输出是content下面元素的list
-         */
+
+        // 产生task所需要的必要配置信息
         List<Configuration> contentConfig = mergeReaderAndWriterTaskConfigs(
                 readerTaskConfigs, writerTaskConfigs, transformerList);
-
 
         LOG.debug("contentConfig configuration: "+ JSON.toJSONString(contentConfig));
 
@@ -440,13 +462,13 @@ public class JobContainer extends AbstractContainer {
     }
 
     /**
-     * 调整通道数量 通道数量代表着什么 与TG数量有什么关系
+     * 尝试调整channel数量
      */
     private void adjustChannelNumber() {
         int needChannelNumberByByte = Integer.MAX_VALUE;
         int needChannelNumberByRecord = Integer.MAX_VALUE;
 
-        // 有关byte写入速度的限制 类似lucene的写入限制
+        // 检测是否开启了byte限流
         boolean isByteLimit = (this.configuration.getInt(
                 CoreConstant.DATAX_JOB_SETTING_SPEED_BYTE, 0) > 0);
         if (isByteLimit) {
@@ -454,7 +476,7 @@ public class JobContainer extends AbstractContainer {
             long globalLimitedByteSpeed = this.configuration.getInt(
                     CoreConstant.DATAX_JOB_SETTING_SPEED_BYTE, 10 * 1024 * 1024);
 
-            // 在configuration中已经设置了byte的限流写入 所以这里必须要对channel传输速度做限制
+            // 假设在job级别设置了限流 就认为在channel级别必须设置限流
             Long channelLimitedByteSpeed = this.configuration
                     .getLong(CoreConstant.DATAX_CORE_TRANSPORT_CHANNEL_SPEED_BYTE);
             if (channelLimitedByteSpeed == null || channelLimitedByteSpeed <= 0) {
@@ -463,7 +485,7 @@ public class JobContainer extends AbstractContainer {
                         "在有总bps限速条件下，单个channel的bps值不能为空，也不能为非正数");
             }
 
-            // 总限流值/单个channel限流值 得到的就是channel数量
+            // 得到一个推测的channel数量 这个值会影响到job如何分组
             needChannelNumberByByte =
                     (int) (globalLimitedByteSpeed / channelLimitedByteSpeed);
 
@@ -499,7 +521,7 @@ public class JobContainer extends AbstractContainer {
         this.needChannelNumber = needChannelNumberByByte < needChannelNumberByRecord ?
                 needChannelNumberByByte : needChannelNumberByRecord;
 
-        // 如果从byte或record上设置了needChannelNumber则退出
+        // 代表因为限流策略 间接决定了channel的数量 且这个数量具备最高优先级
         if (this.needChannelNumber < Integer.MAX_VALUE) {
             return;
         }
@@ -518,38 +540,36 @@ public class JobContainer extends AbstractContainer {
             return;
         }
 
-        // 要求必须设置限流值
+        // 必须对传输速度做限制
         throw DataXException.asDataXException(
                 FrameworkErrorCode.CONFIG_ERROR,
                 "Job运行速度必须设置");
     }
 
     /**
-     * schedule首先完成的工作是把上一步reader和writer split的结果整合到具体taskGroupContainer中,
-     * 同时不同的执行模式调用不同的调度策略，将所有任务调度起来
+     * 这里将任务合并成TG后 并通过schedule启动
      */
     private void schedule() {
-        /**
-         * 这里的全局speed和每个channel的速度设置为B/s
-         */
+
+        // 默认情况下 每5个channel分为一个TG
         int channelsPerTaskGroup = this.configuration.getInt(
                 CoreConstant.DATAX_CORE_CONTAINER_TASKGROUP_CHANNEL, 5);
         int taskNumber = this.configuration.getList(
                 CoreConstant.DATAX_JOB_CONTENT).size();
 
+        // task数量可能与channel 不一致  但是TG的分组是按照channel数量来的  也就是IO速率才是分组的指标
+        // 如果发现channel本身超过task数量  不需要多余的channel
         this.needChannelNumber = Math.min(this.needChannelNumber, taskNumber);
         PerfTrace.getInstance().setChannelNumber(needChannelNumber);
 
-        /**
-         * 通过获取配置信息得到每个taskGroup需要运行哪些tasks任务
-         */
-
+        // 开始为task分组 同时生成TG级别的配置项
         List<Configuration> taskGroupConfigs = JobAssignUtil.assignFairly(this.configuration,
                 this.needChannelNumber, channelsPerTaskGroup);
 
         LOG.info("Scheduler starts [{}] taskGroups.", taskGroupConfigs.size());
 
         ExecuteMode executeMode = null;
+        // 这里初始化定时器对象 会定期检测每个TG的运行状态 并输出日志
         AbstractScheduler scheduler;
         try {
         	executeMode = ExecuteMode.STANDALONE;
@@ -764,10 +784,16 @@ public class JobContainer extends AbstractContainer {
         classLoaderSwapper.restoreCurrentThreadClassLoader();
     }
 
-    // TODO: 如果源头就是空数据
+    /**
+     * 将 job 级别拆分成多个task
+     * @param adviceNumber 对应整个job下应该有多少channel
+     * @return
+     */
     private List<Configuration> doReaderSplit(int adviceNumber) {
         classLoaderSwapper.setCurrentThreadClassLoader(LoadUtil.getJarLoader(
                 PluginType.READER, this.readerPluginName));
+
+        // 原来拆分的逻辑是由插件来决定的
         List<Configuration> readerSlicesConfigs =
                 this.jobReader.split(adviceNumber);
         if (readerSlicesConfigs == null || readerSlicesConfigs.size() <= 0) {
@@ -781,6 +807,11 @@ public class JobContainer extends AbstractContainer {
         return readerSlicesConfigs;
     }
 
+    /**
+     *
+     * @param readerTaskNumber 对应的是通过reader对象拆分出来的任务数量  因为writer的数量超过reader也没有太大意义
+     * @return
+     */
     private List<Configuration> doWriterSplit(int readerTaskNumber) {
         classLoaderSwapper.setCurrentThreadClassLoader(LoadUtil.getJarLoader(
                 PluginType.WRITER, this.writerPluginName));
@@ -812,10 +843,18 @@ public class JobContainer extends AbstractContainer {
         return mergeReaderAndWriterTaskConfigs(readerTasksConfigs, writerTasksConfigs, null);
     }
 
+    /**
+     * 这里将相关配置合并
+     * @param readerTasksConfigs
+     * @param writerTasksConfigs
+     * @param transformerConfigs
+     * @return
+     */
     private List<Configuration> mergeReaderAndWriterTaskConfigs(
             List<Configuration> readerTasksConfigs,
             List<Configuration> writerTasksConfigs,
             List<Configuration> transformerConfigs) {
+        // 框架强制要求 reader/writer拆分后的task数量一致
         if (readerTasksConfigs.size() != writerTasksConfigs.size()) {
             throw DataXException.asDataXException(
                     FrameworkErrorCode.PLUGIN_SPLIT_ERROR,
@@ -825,6 +864,7 @@ public class JobContainer extends AbstractContainer {
         }
 
         List<Configuration> contentConfigs = new ArrayList<Configuration>();
+        // 只填充必要的信息  也就是task级别的配置是启动后生成的  因为一开始并不知道会拆分出多少个任务
         for (int i = 0; i < readerTasksConfigs.size(); i++) {
             Configuration taskConfig = Configuration.newDefault();
             taskConfig.set(CoreConstant.JOB_READER_NAME,

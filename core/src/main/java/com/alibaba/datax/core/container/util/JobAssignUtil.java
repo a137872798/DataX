@@ -9,36 +9,34 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.*;
 
 /**
- * 该工具类规定了job是如何被分散到多个TG中的
- * TODO 还不清楚分配的其他几个参数是如何获得的
+ * 规定了如何按照channel数量 对任务进行分组
  */
 public final class JobAssignUtil {
     private JobAssignUtil() {
     }
 
     /**
-     * 公平的分配 task 到对应的 taskGroup 中。
-     * 公平体现在：会考虑 task 中对资源负载作的 load 标识进行更均衡的作业分配操作。
-     * @param configuration 这里对应一组task相关的configuration
-     * @param channelNumber 用于计算会负载到多少个TG中
+     * @param configuration job级别的配置项
+     * @param channelNumber 单个job产生的通道数量
+     * @param channelsPerTaskGroup 每个TG下包含多少个通道
      */
     public static List<Configuration> assignFairly(Configuration configuration, int channelNumber, int channelsPerTaskGroup) {
         Validate.isTrue(configuration != null, "框架获得的 Job 不能为 null.");
 
-        // 获取一组有关job.content的配置项信息
+        // content数量就对应task的数量 详细逻辑在JobContainer中
         List<Configuration> contentConfig = configuration.getListConfiguration(CoreConstant.DATAX_JOB_CONTENT);
         Validate.isTrue(contentConfig.size() > 0, "框架获得的切分后的 Job 无内容.");
 
         Validate.isTrue(channelNumber > 0 && channelsPerTaskGroup > 0,
                 "每个channel的平均task数[averTaskPerChannel]，channel数目[channelNumber]，每个taskGroup的平均channel数[channelsPerTaskGroup]都应该为正数");
 
-        // 判断会使用到多少个TG
+        // 推测会生成多少TG
         int taskGroupNumber = (int) Math.ceil(1.0 * channelNumber / channelsPerTaskGroup);
 
-        // 尝试性检测第一个配置是否设置了 read/write mark 如果没有 为每个conf设置fake值
+        // 因为每个task有关插件的信息都是一样的 所以获取第一个就可以
         Configuration aTaskConfig = contentConfig.get(0);
 
-        // 描述当前资源读写的负载情况 可以作为task分配的影响因素
+        // 发现当存在这些mark时 认为插件产生的task 不应该被打乱
         String readerResourceMark = aTaskConfig.getString(CoreConstant.JOB_READER_PARAMETER + "." +
                 CommonConstant.LOAD_BALANCE_RESOURCE_MARK);
         String writerResourceMark = aTaskConfig.getString(CoreConstant.JOB_WRITER_PARAMETER + "." +
@@ -47,20 +45,21 @@ public final class JobAssignUtil {
         boolean hasLoadBalanceResourceMark = StringUtils.isNotBlank(readerResourceMark) ||
                 StringUtils.isNotBlank(writerResourceMark);
 
+        // 没有设置mark 允许打乱任务
         if (!hasLoadBalanceResourceMark) {
-            // fake 一个固定的 key 作为资源标识（在 reader 或者 writer 上均可，此处选择在 reader 上进行 fake）
             for (Configuration conf : contentConfig) {
                 conf.set(CoreConstant.JOB_READER_PARAMETER + "." +
                         CommonConstant.LOAD_BALANCE_RESOURCE_MARK, "aFakeResourceMarkForLoadBalance");
             }
-            // 是为了避免某些插件没有设置 资源标识 而进行了一次随机打乱操作
+            // 将task 打乱
             Collections.shuffle(contentConfig, new Random(System.currentTimeMillis()));
         }
 
+        // 对应将task按照readerMark或者writerMark分组的结果
         LinkedHashMap<String, List<Integer>> resourceMarkAndTaskIdMap = parseAndGetResourceMarkAndTaskIdMap(contentConfig);
+        // 从下面的分配逻辑可以看到  resourceMark会影响分配的结果
         List<Configuration> taskGroupConfig = doAssign(resourceMarkAndTaskIdMap, configuration, taskGroupNumber);
 
-        // 调整 每个 taskGroup 对应的 Channel 个数（属于优化范畴）TODO 之后在看 先理解设计理念和使用流程
         adjustChannelNumPerTaskGroup(taskGroupConfig, channelNumber);
         return taskGroupConfig;
     }
@@ -68,6 +67,7 @@ public final class JobAssignUtil {
     private static void adjustChannelNumPerTaskGroup(List<Configuration> taskGroupConfig, int channelNumber) {
         int taskGroupNumber = taskGroupConfig.size();
         int avgChannelsPerTaskGroup = channelNumber / taskGroupNumber;
+        // 将多余的channel 平分到每个TG下
         int remainderChannelCount = channelNumber % taskGroupNumber;
         // 表示有 remainderChannelCount 个 taskGroup,其对应 Channel 个数应该为：avgChannelsPerTaskGroup + 1；
         // （taskGroupNumber - remainderChannelCount）个 taskGroup,其对应 Channel 个数应该为：avgChannelsPerTaskGroup
@@ -92,9 +92,8 @@ public final class JobAssignUtil {
         LinkedHashMap<String, List<Integer>> writerResourceMarkAndTaskIdMap = new LinkedHashMap<String, List<Integer>>();
 
         for (Configuration aTaskConfig : contentConfig) {
-            // 通过从单个任务的配置项中 获取任务id
             int taskId = aTaskConfig.getInt(CoreConstant.TASK_ID);
-            // 把 readerResourceMark 加到 readerResourceMarkAndTaskIdMap 中
+            // 当使用插件拆解job 并生成多个task时 每个task可能携带了不同的mark 将他们按照mark分组
             String readerResourceMark = aTaskConfig.getString(CoreConstant.JOB_READER_PARAMETER + "." + CommonConstant.LOAD_BALANCE_RESOURCE_MARK);
             if (readerResourceMarkAndTaskIdMap.get(readerResourceMark) == null) {
                 readerResourceMarkAndTaskIdMap.put(readerResourceMark, new LinkedList<Integer>());
@@ -136,21 +135,24 @@ public final class JobAssignUtil {
      * </pre>
      *
      * 将task分配到TG上
-     * @param resourceMarkAndTaskIdMap key对应资源名，value对应 taskId list
+     * @param resourceMarkAndTaskIdMap key对应resourceMark，value对应 taskId list
      * @param jobConfiguration job级别配置项
      * @param taskGroupNumber 本次会涉及到多少个TG
      * @return 返回TG级别的configuration
      */
     private static List<Configuration> doAssign(LinkedHashMap<String, List<Integer>> resourceMarkAndTaskIdMap, Configuration jobConfiguration, int taskGroupNumber) {
+
+        // 获取task级别的配置项
         List<Configuration> contentConfig = jobConfiguration.getListConfiguration(CoreConstant.DATAX_JOB_CONTENT);
 
         Configuration taskGroupTemplate = jobConfiguration.clone();
+
+        // 生成TG级别的配置项  TG级别不需要task的配置
         taskGroupTemplate.remove(CoreConstant.DATAX_JOB_CONTENT);
 
         List<Configuration> result = new LinkedList<Configuration>();
 
         List<List<Configuration>> taskGroupConfigList = new ArrayList<List<Configuration>>(taskGroupNumber);
-        // 为每个TG下的task初始化list
         for (int i = 0; i < taskGroupNumber; i++) {
             taskGroupConfigList.add(new LinkedList<Configuration>());
         }
@@ -167,6 +169,7 @@ public final class JobAssignUtil {
         }
 
         int taskGroupIndex = 0;
+        // 每个resourceMark下最大的任务数 * resourceMark数量 必然大于任务总数 能确保访问到所有任务
         for (int i = 0; i < mapValueMaxLength; i++) {
             for (String resourceMark : resourceMarks) {
                 if (resourceMarkAndTaskIdMap.get(resourceMark).size() > 0) {

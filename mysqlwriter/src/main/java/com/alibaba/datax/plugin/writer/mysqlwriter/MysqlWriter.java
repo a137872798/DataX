@@ -9,8 +9,9 @@ import com.alibaba.datax.plugin.rdbms.writer.Key;
 
 import java.util.List;
 
-
-//TODO writeProxy
+/**
+ * dataX目前只关注mysql的相关实现
+ */
 public class MysqlWriter extends Writer {
     private static final DataBaseType DATABASE_TYPE = DataBaseType.MySql;
 

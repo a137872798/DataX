@@ -17,13 +17,19 @@ public final class ReaderSplitUtil {
     private static final Logger LOG = LoggerFactory
             .getLogger(ReaderSplitUtil.class);
 
+    /**
+     * 将job拆解成多个任务
+     * @param originalSliceConfig
+     * @param adviceNumber 此时channel数量
+     * @return
+     */
     public static List<Configuration> doSplit(
             Configuration originalSliceConfig, int adviceNumber) {
         boolean isTableMode = originalSliceConfig.getBool(Constant.IS_TABLE_MODE).booleanValue();
         int eachTableShouldSplittedNumber = -1;
         if (isTableMode) {
             // adviceNumber这里是channel数量大小, 即datax并发task数量
-            // eachTableShouldSplittedNumber是单表应该切分的份数, 向上取整可能和adviceNumber没有比例关系了已经
+            // TABLE_NUMBER_MARK 用于描述本次会涉及到多少个表 channelNum/tableNum 得到的是每个表应该使用多少channel 以提高并发能力
             eachTableShouldSplittedNumber = calculateEachTableShouldSplittedNumber(
                     adviceNumber, originalSliceConfig.getInt(Constant.TABLE_NUMBER_MARK));
         }
@@ -35,6 +41,7 @@ public final class ReaderSplitUtil {
 
         List<Configuration> splittedConfigs = new ArrayList<Configuration>();
 
+        // 第一层维度 按照conn进行拆分
         for (int i = 0, len = conns.size(); i < len; i++) {
             Configuration sliceConfig = originalSliceConfig.clone();
 
@@ -49,16 +56,17 @@ public final class ReaderSplitUtil {
 
             Configuration tempSlice;
 
-            // 说明是配置的 table 方式
+            // 配置了table信息
             if (isTableMode) {
-                // 已在之前进行了扩展和`处理，可以直接使用
+                // 需要查询多少张表
                 List<String> tables = connConf.getList(Key.TABLE, String.class);
 
                 Validate.isTrue(null != tables && !tables.isEmpty(), "您读取数据库表配置错误.");
 
+                // 基于主键对单表进行进一步拆分
                 String splitPk = originalSliceConfig.getString(Key.SPLIT_PK, null);
 
-                //最终切分份数不一定等于 eachTableShouldSplittedNumber
+                // 如果不存在主键 无法进行数据拆分 或者 channel数量与table数量一致 也不需要拆分
                 boolean needSplitTable = eachTableShouldSplittedNumber > 1
                         && StringUtils.isNotBlank(splitPk);
                 if (needSplitTable) {
@@ -73,6 +81,7 @@ public final class ReaderSplitUtil {
                         //为避免导入hive小文件 默认基数为5，可以通过 splitFactor 配置基数
                         // 最终task数为(channel/tableNum)向上取整*splitFactor
                         Integer splitFactor = originalSliceConfig.getInt(Key.SPLIT_FACTOR, Constant.SPLIT_FACTOR);
+                        // 单表的话 默认将数据5等分
                         eachTableShouldSplittedNumber = eachTableShouldSplittedNumber * splitFactor;
                     }
                     // 尝试对每个表，切分为eachTableShouldSplittedNumber 份
@@ -80,12 +89,15 @@ public final class ReaderSplitUtil {
                         tempSlice = sliceConfig.clone();
                         tempSlice.set(Key.TABLE, table);
 
+                        // 每个task对应一部分的数据
                         List<Configuration> splittedSlices = SingleTableSplitUtil
                                 .splitSingleTable(tempSlice, eachTableShouldSplittedNumber);
 
+                        // 这里为每个片段定义了查询的数据范围
                         splittedConfigs.addAll(splittedSlices);
                     }
                 } else {
+                    // 无法拆分的情况 比如 channel数量与table数量持平 或者channel更少 那么至少要分配table对应数量的task
                     for (String table : tables) {
                         tempSlice = sliceConfig.clone();
                         tempSlice.set(Key.TABLE, table);
@@ -95,7 +107,7 @@ public final class ReaderSplitUtil {
                     }
                 }
             } else {
-                // 说明是配置的 querySql 方式
+                // 说明是配置的 querySql 方式 这里的处理比较简单没有进一步拆分数据 而是将querySql查询出来的所有数据作为一个task
                 List<String> sqls = connConf.getList(Key.QUERY_SQL, String.class);
 
                 // TODO 是否check 配置为多条语句？？

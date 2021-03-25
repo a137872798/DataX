@@ -39,24 +39,21 @@ public class Engine {
     private static String RUNTIME_MODE;
 
     /**
-     * check job model (job/task) first
+     * 整个dataX的启动入口
      * @param allConf 使用外部json转换成的配置对象启动
      */
     public void start(Configuration allConf) {
 
-        // 使用配置项中的信息去覆盖常量值
+        // 某些字段可能需要转换器  从配置项中获取最新的转换规则
         ColumnCast.bind(allConf);
 
-        /**
-         * 初始化PluginLoader，可以获取各种插件配置
-         * 这里可能是读取configuration中某些插件的name，并通过反射进行创建
-         */
+        // 插件在通过反射创建时 需要读取配置项信息 这里就是全局共享配置
         LoadUtil.bind(allConf);
 
         // 存在2种容器模式  TG模式和Job模式
         boolean isJob = !("taskGroup".equalsIgnoreCase(allConf
                 .getString(CoreConstant.DATAX_CORE_CONTAINER_MODEL)));
-        //JobContainer会在schedule后再行进行设置和调整值
+
         int channelNumber =0;
         AbstractContainer container;
         long instanceId;
@@ -68,6 +65,7 @@ public class Engine {
                     CoreConstant.DATAX_CORE_CONTAINER_JOB_ID, 0);
 
         } else {
+            // 当本次dataX对应的是一个 TG 从这里可以看出 dataX可以将TG作为进程级别任务 也可以将job作为进程级别任务 以TG为单位执行进程级别任务有助于提高并行度
             container = new TaskGroupContainer(allConf);
             instanceId = allConf.getLong(
                     CoreConstant.DATAX_CORE_CONTAINER_JOB_ID);
@@ -77,7 +75,7 @@ public class Engine {
                     CoreConstant.DATAX_CORE_CONTAINER_TASKGROUP_CHANNEL);
         }
 
-        //缺省打开perfTrace
+        // 开启打印性能报告的开关
         boolean traceEnable = allConf.getBool(CoreConstant.DATAX_CORE_CONTAINER_TRACE_ENABLE, true);
         boolean perfReportEnable = allConf.getBool(CoreConstant.DATAX_CORE_REPORT_DATAX_PERFLOG, true);
 
@@ -93,12 +91,13 @@ public class Engine {
             LOG.warn("prioriy set to 0, because NumberFormatException, the value is: "+System.getProperty("PROIORY"));
         }
 
+        // 统计信息的先忽略
         Configuration jobInfoConfig = allConf.getConfiguration(CoreConstant.DATAX_JOB_JOBINFO);
-        //初始化PerfTrace 记录一些统计信息
         PerfTrace perfTrace = PerfTrace.getInstance(isJob, instanceId, taskGroupId, priority, traceEnable);
         perfTrace.setJobInfo(jobInfoConfig,perfReportEnable,channelNumber);
-        container.start();
 
+        // 通过容器启动task
+        container.start();
     }
 
 
@@ -127,6 +126,11 @@ public class Engine {
         return configuration;
     }
 
+    /**
+     * 读取命令行参数 并通过engine启动dataX
+     * @param args
+     * @throws Throwable
+     */
     public static void entry(final String[] args) throws Throwable {
         Options options = new Options();
         options.addOption("job", true, "Job config.");
@@ -142,6 +146,7 @@ public class Engine {
         String jobIdString = cl.getOptionValue("jobid");
         RUNTIME_MODE = cl.getOptionValue("mode");
 
+        // 从命令行读取配置项路径后 解析成配置对象
         Configuration configuration = ConfigParser.parse(jobPath);
 
         long jobId;
