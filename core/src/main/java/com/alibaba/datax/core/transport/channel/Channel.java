@@ -15,22 +15,34 @@ import java.util.Collection;
 /**
  * Created by jingxing on 14-8-25.
  * <p/>
- * 统计和限速都在这里
+ * 从reader读取来的数据在通过writer写出之前需要经过管道 也就是数据暂存的地方 默认基于内存实现
  */
 public abstract class Channel {
 
     private static final Logger LOG = LoggerFactory.getLogger(Channel.class);
 
+    /**
+     * 每个管道是划分在某个TG下的
+     */
     protected int taskGroupId;
 
+    /**
+     * 管道容量 也可以理解成缓冲区容量 这个应该是record数量
+     */
     protected int capacity;
 
     protected int byteCapacity;
 
+    /**
+     * 还可以根据IO速率进行限流
+     */
     protected long byteSpeed; // bps: bytes/s
 
     protected long recordSpeed; // tps: records/s
 
+    /**
+     * 流量控制时间间隔是什么 ???
+     */
     protected long flowControlInterval;
 
     protected volatile boolean isClosed = false;
@@ -47,8 +59,11 @@ public abstract class Channel {
 
     private Communication lastCommunication = new Communication();
 
+    /**
+     * 管道的相关配置都是从config中获取的
+     * @param configuration
+     */
     public Channel(final Configuration configuration) {
-        //channel的queue里默认record为1万条。原来为512条
         int capacity = configuration.getInt(
                 CoreConstant.DATAX_CORE_TRANSPORT_CHANNEL_CAPACITY, 2048);
         long byteSpeed = configuration.getLong(
@@ -117,12 +132,22 @@ public abstract class Channel {
         this.lastCommunication.reset();
     }
 
+    /**
+     * 将某条数据写入到管道中 由子类实现具体方法  有没有发现都是非线程安全的 看来每个task独占一个channel???
+     * @param r
+     */
     public void push(final Record r) {
         Validate.notNull(r, "record不能为空.");
         this.doPush(r);
+        // 统计此时已经插入到管道中的数据量
         this.statPush(1L, r.getByteSize());
     }
 
+    /**
+     * record 应该是数据搬运的最小单位 而读取的最小单位是 column 只有当读取足以拼成record时 才写入到channel中
+     * 同时当发现写入的是一个TerminateRecord 代表数据传输完毕
+     * @param r
+     */
     public void pushTerminate(final TerminateRecord r) {
         Validate.notNull(r, "record不能为空.");
         this.doPush(r);
@@ -132,6 +157,10 @@ public abstract class Channel {
 //                currentCommunication.getLongCounter(CommunicationTool.STAGE) + 1);
     }
 
+    /**
+     * 批量传输数据
+     * @param rs
+     */
     public void pushAll(final Collection<Record> rs) {
         Validate.notNull(rs);
         Validate.noNullElements(rs);
@@ -139,6 +168,10 @@ public abstract class Channel {
         this.statPush(rs.size(), this.getByteSize(rs));
     }
 
+    /**
+     * 从channel中拉取数据
+     * @return
+     */
     public Record pull() {
         Record record = this.doPull();
         this.statPull(1L, record.getByteSize());
@@ -173,6 +206,11 @@ public abstract class Channel {
         return size;
     }
 
+    /**
+     * 每当有记录存储到channel中时 需要更新沟通对象
+     * @param recordSize
+     * @param byteSize
+     */
     private void statPush(long recordSize, long byteSize) {
         currentCommunication.increaseCounter(CommunicationTool.READ_SUCCEED_RECORDS,
                 recordSize);

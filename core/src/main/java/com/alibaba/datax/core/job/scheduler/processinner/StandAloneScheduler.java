@@ -11,6 +11,11 @@ public class StandAloneScheduler extends ProcessInnerScheduler{
         super(containerCommunicator);
     }
 
+    /**
+     * 代表该对象不支持关闭job
+     * @param jobId
+     * @return
+     */
     @Override
     protected boolean isJobKilling(Long jobId) {
         return false;

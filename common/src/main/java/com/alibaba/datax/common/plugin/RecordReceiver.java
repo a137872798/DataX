@@ -18,6 +18,9 @@ package com.alibaba.datax.common.plugin;
 
 import com.alibaba.datax.common.element.Record;
 
+/**
+ * 该接口定义了通过reader读取record的api 在这层可能做了缓存区等等
+ */
 public interface RecordReceiver {
 
 	public Record getFromReader();

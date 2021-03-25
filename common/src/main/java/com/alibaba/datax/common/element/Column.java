@@ -9,11 +9,18 @@ import java.util.Date;
 /**
  * Created by jingxing on 14-8-24.
  * <p/>
+ * 在数据传输的过程中 数据被看作是一个个列
  */
 public abstract class Column {
 
+	/**
+	 * 当前数据列的类型
+	 */
 	private Type type;
 
+	/**
+	 * 应该是数据被reader传输过来的原始值 可能需要适配成合适writer的类型
+	 */
 	private Object rawData;
 
 	private int byteSize;

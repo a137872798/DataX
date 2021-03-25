@@ -9,6 +9,7 @@ import java.util.Map;
 /**
  * no comments.
  * Created by liqiang on 16/3/8.
+ * 实际上做了一层适配 并没有额外的功能
  */
 public class ComplexTransformerProxy extends ComplexTransformer {
     private Transformer realTransformer;

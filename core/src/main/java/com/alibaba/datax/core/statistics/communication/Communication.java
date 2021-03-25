@@ -283,7 +283,11 @@ public class Communication extends BaseObject implements Cloneable {
         this.setState(retState);
         return retState;
     }
-    
+
+    /**
+     * 判断对应的任务是否已经完成
+     * @return
+     */
     public synchronized boolean isFinished(){
     	return this.state == State.SUCCEEDED || this.state == State.FAILED	
     			|| this.state == State.KILLED;

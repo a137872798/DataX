@@ -91,6 +91,10 @@ public abstract class AbstractContainerCommunicator {
      */
     public abstract Map<Integer, Communication> getCommunicationMap();
 
+    /**
+     * 一般是当发现任务执行失败 并尝试重试时会调用该方法 覆盖原本task对应的沟通者对象
+     * @param id
+     */
     public void resetCommunication(Integer id){
         Map<Integer, Communication> map = getCommunicationMap();
         map.put(id, new Communication());

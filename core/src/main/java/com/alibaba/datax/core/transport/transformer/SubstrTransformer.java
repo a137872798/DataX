@@ -11,6 +11,7 @@ import java.util.Arrays;
 /**
  * no comments.
  * Created by liqiang on 16/3/4.
+ * 这些transformer对象好像是对传输的数据做处理的
  */
 public class SubstrTransformer extends Transformer {
     public SubstrTransformer() {
@@ -25,6 +26,7 @@ public class SubstrTransformer extends Transformer {
         int length;
 
         try {
+            // 参数必须是3个
             if (paras.length != 3) {
                 throw new RuntimeException("dx_substr paras must be 3");
             }
@@ -37,6 +39,7 @@ public class SubstrTransformer extends Transformer {
             throw DataXException.asDataXException(TransformerErrorCode.TRANSFORMER_ILLEGAL_PARAMETER, "paras:" + Arrays.asList(paras).toString() + " => " + e.getMessage());
         }
 
+        // 从记录中找到对应的列
         Column column = record.getColumn(columnIndex);
 
         try {
@@ -49,6 +52,7 @@ public class SubstrTransformer extends Transformer {
             if (startIndex > oriValue.length()) {
                 throw new RuntimeException(String.format("dx_substr startIndex(%s) out of range(%s)", startIndex, oriValue.length()));
             }
+            // 这里将对应列的数据裁剪后重新填充到record中
             if (startIndex + length >= oriValue.length()) {
                 newValue = oriValue.substring(startIndex, oriValue.length());
             } else {

@@ -6,11 +6,11 @@ import com.alibaba.datax.common.element.Record;
 /**
  * no comments.
  * Created by liqiang on 16/3/3.
+ * 转换器骨架类
  */
 public abstract class Transformer {
     //transformerName的唯一性在datax中检查，或者提交到插件中心检查。
     private String transformerName;
-
 
     public String getTransformerName() {
         return transformerName;

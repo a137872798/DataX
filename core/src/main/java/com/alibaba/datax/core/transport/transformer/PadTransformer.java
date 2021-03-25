@@ -11,6 +11,7 @@ import java.util.Arrays;
 /**
  * no comments.
  * Created by liqiang on 16/3/4.
+ * 填充用传输器对象
  */
 public class PadTransformer extends Transformer {
     public PadTransformer() {

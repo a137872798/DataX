@@ -6,6 +6,7 @@ import java.util.Map;
 /**
  * no comments.
  * Created by liqiang on 16/3/16.
+ * 存储一些参数信息
  */
 public class TransformerExecutionParas {
 

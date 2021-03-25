@@ -19,7 +19,13 @@ public class TransformerUtil {
 
     private static final Logger LOG = LoggerFactory.getLogger(TransformerUtil.class);
 
+    /**
+     * 传入某个task相关的配置 生成一组传输执行者
+     * @param taskConfig
+     * @return
+     */
     public static List<TransformerExecution> buildTransformerInfo(Configuration taskConfig) {
+        // 获取一组传输器相关的配置
         List<Configuration> tfConfigs = taskConfig.getListConfiguration(CoreConstant.JOB_TRANSFORMER);
         if (tfConfigs == null || tfConfigs.size() == 0) {
             return null;
@@ -43,9 +49,6 @@ public class TransformerUtil {
             functionNames.add(functionName);
         }
 
-        /**
-         * 延迟load 第三方插件的function，并按需load
-         */
         LOG.info(String.format(" user config tranformers [%s], loading...", functionNames));
         TransformerRegistry.loadTransformerFromLocalStorage(functionNames);
 
@@ -58,14 +61,13 @@ public class TransformerUtil {
                 throw DataXException.asDataXException(TransformerErrorCode.TRANSFORMER_NOTFOUND_ERROR, "name=" + functionName);
             }
 
-            /**
-             * 具体的UDF对应一个paras
-             */
+            // 该对象用于维护参数
             TransformerExecutionParas transformerExecutionParas = new TransformerExecutionParas();
             /**
              * groovy function仅仅只有code
              */
             if (!functionName.equals("dx_groovy") && !functionName.equals("dx_fackGroovy")) {
+                // 其他传输器对象要求必须设置columnIndex参数
                 Integer columnIndex = configuration.getInt(CoreConstant.TRANSFORMER_PARAMETER_COLUMNINDEX);
 
                 if (columnIndex == null) {
@@ -73,11 +75,13 @@ public class TransformerUtil {
                 }
 
                 transformerExecutionParas.setColumnIndex(columnIndex);
+                // 其他一些参数
                 List<String> paras = configuration.getList(CoreConstant.TRANSFORMER_PARAMETER_PARAS, String.class);
                 if (paras != null && paras.size() > 0) {
                     transformerExecutionParas.setParas(paras.toArray(new String[0]));
                 }
             } else {
+                // 另外2种传输器存储的固定参数是code
                 String code = configuration.getString(CoreConstant.TRANSFORMER_PARAMETER_CODE);
                 if (StringUtils.isEmpty(code)) {
                     throw DataXException.asDataXException(TransformerErrorCode.TRANSFORMER_ILLEGAL_PARAMETER, "groovy code must be set by UDF:name=" + functionName);
@@ -89,6 +93,8 @@ public class TransformerUtil {
                     transformerExecutionParas.setExtraPackage(extraPackage);
                 }
             }
+
+            // 从配置项中获取上下文信息
             transformerExecutionParas.settContext(configuration.getMap(CoreConstant.TRANSFORMER_PARAMETER_CONTEXT));
 
             TransformerExecution transformerExecution = new TransformerExecution(transformerInfo, transformerExecutionParas);

@@ -5,6 +5,7 @@ import java.util.Map;
 
 /**
  * Created by jingxing on 14-9-9.
+ * 该对象存储了task在运行时采集的各种信息
  */
 public interface JobPluginCollector extends PluginCollector {
 

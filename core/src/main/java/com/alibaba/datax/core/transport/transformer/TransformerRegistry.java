@@ -19,6 +19,8 @@ import java.util.Map;
 /**
  * no comments.
  * Created by liqiang on 16/3/3.
+ * 该对象维护了所有转换器信息
+ * 转换器就是修改record的某些column
  */
 public class TransformerRegistry {
 
@@ -29,8 +31,8 @@ public class TransformerRegistry {
         /**
          * add native transformer
          * local storage and from server will be delay load.
+         * 框架内置一些转换器
          */
-
         registTransformer(new SubstrTransformer());
         registTransformer(new PadTransformer());
         registTransformer(new ReplaceTransformer());
@@ -43,9 +45,13 @@ public class TransformerRegistry {
         loadTransformerFromLocalStorage(null);
     }
 
-
+    /**
+     * 根据一组转换器的名字 加载一组传输器
+     * @param transformers
+     */
     public static void loadTransformerFromLocalStorage(List<String> transformers) {
 
+        // 定位到某个特殊目录
         String[] paths = new File(CoreConstant.DATAX_STORAGE_TRANSFORMER_HOME).list();
         if (null == paths) {
             return;
@@ -53,6 +59,7 @@ public class TransformerRegistry {
 
         for (final String each : paths) {
             try {
+                // 当目录下有匹配的路径时才能加载
                 if (transformers == null || transformers.contains(each)) {
                     loadTransformer(each);
                 }
@@ -63,7 +70,12 @@ public class TransformerRegistry {
         }
     }
 
+    /**
+     * 加载指定路径下的 传输器
+     * @param each
+     */
     public static void loadTransformer(String each) {
+        // 定位到指定目录
         String transformerPath = CoreConstant.DATAX_STORAGE_TRANSFORMER_HOME + File.separator + each;
         Configuration transformerConfiguration;
         try {
@@ -83,11 +95,14 @@ public class TransformerRegistry {
         if (!each.equals(funName)) {
             LOG.warn(String.format("transformer(%s) name not match transformer.json config name[%s], will ignore json's name, path = %s, config = %s", each, funName, transformerPath, transformerConfiguration.beautify()));
         }
+
+        // 使用独立的类加载器加载类 确保类的隔离  每个task 都会执行一次该方法 他们都采用不同的类加载器
         JarLoader jarLoader = new JarLoader(new String[]{transformerPath});
 
         try {
             Class<?> transformerClass = jarLoader.loadClass(className);
             Object transformer = transformerClass.newInstance();
+            // 复合的传输对象 存储逻辑不一致
             if (ComplexTransformer.class.isAssignableFrom(transformer.getClass())) {
                 ((ComplexTransformer) transformer).setTransformerName(each);
                 registComplexTransformer((ComplexTransformer) transformer, jarLoader, false);
@@ -103,6 +118,11 @@ public class TransformerRegistry {
         }
     }
 
+    /**
+     * 读取对应的转换器目录下相关的配置信息
+     * @param transformerPath
+     * @return
+     */
     private static Configuration loadTransFormerConfig(String transformerPath) {
         return Configuration.from(new File(transformerPath + File.separator + "transformer.json"));
     }

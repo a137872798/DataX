@@ -5,7 +5,7 @@ import com.alibaba.datax.transformer.ComplexTransformer;
 import java.util.Map;
 
 /**
- * 每个func对应一个实例.
+ * 对应一个转换器实例对象
  * Created by liqiang on 16/3/16.
  */
 public class TransformerExecution {
@@ -35,6 +35,9 @@ public class TransformerExecution {
 
     private boolean isChecked = false;
 
+    /**
+     * 解析内部的参数对象
+     */
     public void genFinalParas() {
 
         /**

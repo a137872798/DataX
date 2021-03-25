@@ -12,6 +12,10 @@ import java.util.Date;
  */
 public class BoolColumn extends Column {
 
+	/**
+	 * 使用一个boolean值 对列进行初始化 这里除了指定类型外 还声明了boolean的长度为一个byte
+	 * @param bool
+	 */
 	public BoolColumn(Boolean bool) {
 		super(bool, Column.Type.BOOL, 1);
 	}
@@ -99,6 +103,10 @@ public class BoolColumn extends Column {
 				CommonErrorCode.CONVERT_NOT_SUPPORT, "Boolean类型不能转为Bytes .");
 	}
 
+	/**
+	 * 确保string可以被转换成boolean类型
+	 * @param data
+	 */
 	private void validate(final String data) {
 		if (null == data) {
 			return;

@@ -8,11 +8,24 @@ import com.alibaba.datax.core.statistics.communication.CommunicationTool;
 import com.alibaba.datax.dataxservice.face.domain.enums.State;
 import org.apache.commons.lang.Validate;
 
+/**
+ * runner对象只是定义模板 实际逻辑由插件实现
+ */
 public abstract class AbstractRunner {
+
+    /**
+     * 干活的插件对象
+     */
     private AbstractTaskPlugin plugin;
 
+    /**
+     * job级别的配置项
+     */
     private Configuration jobConf;
 
+    /**
+     * 当前运行的task 对应的沟通对象 用于记录一些数据
+     */
     private Communication runnerCommunication;
 
     private int taskGroupId;
@@ -23,6 +36,9 @@ public abstract class AbstractRunner {
         this.plugin = taskPlugin;
     }
 
+    /**
+     * 调用插件的相关钩子
+     */
     public void destroy() {
         if (this.plugin != null) {
             this.plugin.destroy();
@@ -50,6 +66,10 @@ public abstract class AbstractRunner {
         this.plugin.setPluginJobConf(jobConf);
     }
 
+    /**
+     * 专门为插件使用
+     * @param pluginCollector
+     */
     public void setTaskPluginCollector(TaskPluginCollector pluginCollector) {
         this.plugin.setTaskPluginCollector(pluginCollector);
     }

@@ -4,7 +4,7 @@ import com.alibaba.datax.core.statistics.communication.Communication;
 import com.alibaba.datax.core.statistics.communication.LocalTGCommunicationManager;
 
 /**
- * 默认情况下 当TG级别的沟通对象发生变化时 会更新全局容器
+ * 这里的报告逻辑就是更新 TG级别的沟通数据
  */
 public class ProcessInnerReporter extends AbstractReporter {
 
